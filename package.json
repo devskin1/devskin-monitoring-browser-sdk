@@ -1,0 +1,41 @@
+{
+  "name": "@devskin/browser-sdk",
+  "version": "1.0.0",
+  "description": "DevSkin Browser SDK for complete user analytics and monitoring",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "analytics",
+    "monitoring",
+    "rum",
+    "session-recording",
+    "error-tracking"
+  ],
+  "author": "DevSkin",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/node": "^25.0.3",
+    "rollup": "^4.9.6",
+    "tslib": "^2.8.1",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "rrweb": "^2.0.0-alpha.4",
+    "rrweb-player": "^1.0.0-alpha.4",
+    "web-vitals": "^3.5.1"
+  }
+}
