@@ -18,11 +18,17 @@ Comprehensive browser monitoring SDK for collecting user analytics, performance 
 ### Via CDN
 
 ```html
-<script src="https://cdn.devskin.com/sdk/devskin.umd.min.js"></script>
+<!-- Via unpkg -->
+<script src="https://unpkg.com/@devskin/browser-sdk@latest/dist/devskin.umd.min.js"></script>
+
+<!-- Or via jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/@devskin/browser-sdk@latest/dist/devskin.umd.min.js"></script>
+
 <script>
   DevSkin.init({
     apiKey: 'your-api-key',
     appId: 'your-app-id',
+    apiUrl: 'https://api-monitoring.devskin.com', // Required!
   });
 </script>
 ```
@@ -39,6 +45,7 @@ import DevSkin from '@devskin/browser-sdk';
 DevSkin.init({
   apiKey: 'your-api-key',
   appId: 'your-app-id',
+  apiUrl: 'https://api-monitoring.devskin.com', // Required!
 });
 ```
 
@@ -49,9 +56,9 @@ DevSkin.init({
   // Required
   apiKey: 'your-api-key',
   appId: 'your-app-id',
+  apiUrl: 'https://api-monitoring.devskin.com', // IMPORTANT: Backend URL (Required!)
 
   // Optional
-  apiUrl: 'https://api.devskin.com',
   debug: false,
   environment: 'production',
   release: '1.0.0',

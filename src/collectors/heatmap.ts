@@ -214,26 +214,35 @@ export class HeatmapCollector {
   }
 
   private flush(): void {
+    // Send clicks individually (backend expects one click event per item)
     if (this.clickData.length > 0) {
-      this.transport.sendHeatmapData({
-        type: 'clicks',
-        data: this.clickData,
+      this.clickData.forEach(click => {
+        this.transport.sendHeatmapData({
+          type: 'click',
+          ...click,
+        });
       });
       this.clickData = [];
     }
 
+    // Send scroll data individually
     if (this.scrollData.length > 0) {
-      this.transport.sendHeatmapData({
-        type: 'scroll',
-        data: this.scrollData,
+      this.scrollData.forEach(scroll => {
+        this.transport.sendHeatmapData({
+          type: 'scroll',
+          ...scroll,
+        });
       });
       this.scrollData = [];
     }
 
+    // Send mouse moves individually
     if (this.mouseMoveData.length > 0) {
-      this.transport.sendHeatmapData({
-        type: 'mousemove',
-        data: this.mouseMoveData,
+      this.mouseMoveData.forEach(move => {
+        this.transport.sendHeatmapData({
+          type: 'mousemove',
+          ...move,
+        });
       });
       this.mouseMoveData = [];
     }

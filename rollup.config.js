@@ -12,6 +12,7 @@ export default [
       file: 'dist/devskin.umd.js',
       format: 'umd',
       sourcemap: true,
+      exports: 'default',
     },
     plugins: [
       resolve({ browser: true }),
@@ -27,6 +28,7 @@ export default [
       file: 'dist/devskin.umd.min.js',
       format: 'umd',
       sourcemap: true,
+      exports: 'default',
     },
     plugins: [
       resolve({ browser: true }),

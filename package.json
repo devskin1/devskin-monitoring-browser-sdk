@@ -1,25 +1,41 @@
 {
   "name": "@devskin/browser-sdk",
-  "version": "1.0.0",
-  "description": "DevSkin Browser SDK for complete user analytics and monitoring",
+  "version": "1.0.25",
+  "description": "DevSkin Browser SDK for complete user analytics and monitoring with rrweb session recording",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.esm.js",
+  "main": "dist/devskin.cjs.js",
+  "module": "dist/devskin.esm.js",
+  "browser": "dist/devskin.umd.min.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "prepublishOnly": "npm run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devskin1/devskin-monitoring-browser-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/devskin1/devskin-monitoring-browser-sdk/issues"
+  },
+  "homepage": "https://github.com/devskin1/devskin-monitoring-browser-sdk#readme",
   "keywords": [
     "analytics",
     "monitoring",
     "rum",
     "session-recording",
-    "error-tracking"
+    "error-tracking",
+    "rrweb",
+    "session-replay",
+    "web-vitals",
+    "user-analytics",
+    "observability"
   ],
   "author": "DevSkin",
   "license": "MIT",
@@ -34,7 +50,8 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "rrweb": "^2.0.0-alpha.4",
+    "html2canvas": "^1.4.1",
+    "rrweb": "2.0.0-alpha.13",
     "rrweb-player": "^1.0.0-alpha.4",
     "web-vitals": "^3.5.1"
   }

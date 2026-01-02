@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevSkin Recording Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 30px;
+            border-radius: 8px;
+        }
+        h1 { color: #333; }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            min-height: 100px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 DevSkin Session Recording Test</h1>
+        <p>This page tests the session recording functionality.</p>
+
+        <div>
+            <button onclick="testClick()">Click Me!</button>
+            <button onclick="testInput()">Show Input</button>
+            <button onclick="testScroll()">Scroll Test</button>
+        </div>
+
+        <div id="status">
+            <strong>Status:</strong> Initializing...
+        </div>
+
+        <div id="test-content" style="margin-top: 20px;">
+            <p>Test content here...</p>
+        </div>
+    </div>
+
+    <!-- Load DevSkin SDK from local dist -->
+    <script src="./dist/devskin.umd.js"></script>
+    <script>
+        const statusDiv = document.getElementById('status');
+
+        function log(message) {
+            const now = new Date().toISOString().split('T')[1].split('.')[0];
+            statusDiv.innerHTML += `<br>[${now}] ${message}`;
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+
+        // Initialize DevSkin
+        log('Initializing DevSkin SDK...');
+
+        DevSkin.init({
+            apiKey: 'dsk_f24efe9e9680f4252e35c2a084b802e498ee0945a1ad521efc60222557e2e6e9',
+            appId: '29afd7a9-7e4c-4084-b79e-cf1e00957a05',
+            apiUrl: 'http://localhost:3060',
+            debug: true,
+
+            sessionRecording: {
+                enabled: true,
+                maskAllInputs: true,
+                maskTextSelector: '[data-private]',
+                blockClass: 'rr-block',
+                ignoreClass: 'rr-ignore',
+                sampling: 0.5,
+                recordCanvas: false,
+                recordCrossOriginIframes: false,
+                collectFonts: true,
+                inlineStylesheet: true,
+                checkoutEveryNms: 300000,
+                checkoutEveryNth: 200,
+            },
+        });
+
+        log('SDK initialized! Check browser console for detailed logs.');
+        log('Watching for FullSnapshot capture...');
+
+        // Test interactions
+        function testClick() {
+            log('Button clicked!');
+        }
+
+        function testInput() {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = 'Type something...';
+            document.getElementById('test-content').appendChild(input);
+            log('Input field added');
+        }
+
+        function testScroll() {
+            const content = document.getElementById('test-content');
+            for (let i = 0; i < 10; i++) {
+                const p = document.createElement('p');
+                p.textContent = `Scroll test paragraph ${i + 1}`;
+                content.appendChild(p);
+            }
+            log('Scroll content added');
+        }
+
+        // Monitor console logs
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            if (args[0] && typeof args[0] === 'string') {
+                if (args[0].includes('FullSnapshot captured')) {
+                    log('✅ FullSnapshot captured!');
+                }
+                if (args[0].includes('SDK Version')) {
+                    log(`SDK Version: ${args[0].split(':')[1]}`);
+                }
+                if (args[0].includes('No FullSnapshot')) {
+                    log('⚠️ No FullSnapshot after 5 seconds!');
+                }
+            }
+        };
+
+        const originalWarn = console.warn;
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            if (args[0] && typeof args[0] === 'string') {
+                if (args[0].includes('FullSnapshot')) {
+                    log(`⚠️ ${args[0]}`);
+                }
+            }
+        };
+
+        const originalError = console.error;
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            if (args[0] && typeof args[0] === 'string') {
+                if (args[0].includes('recording') || args[0].includes('Failed to send')) {
+                    log(`❌ Error: ${args[0]}`);
+                }
+            }
+        };
+    </script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import { PerformanceCollector } from './collectors/performance';
 import { ErrorCollector } from './collectors/error';
 import { NetworkCollector } from './collectors/network';
 import { HeatmapCollector } from './collectors/heatmap';
+import { ScreenshotCollector } from './collectors/screenshot';
 // import { SessionRecorder } from './recorder/session'; // Replaced by RRWebRecorder
 import { RRWebRecorder } from './recorder/rrweb';
 import { Transport } from './transport';
@@ -17,6 +18,7 @@ class DevSkinSDK {
   private sessionId: string | null = null;
   private userId: string | null = null;
   private anonymousId: string | null = null;
+  private sessionStartTime: number = 0;
   private initialized = false;
 
   // Collectors
@@ -27,6 +29,7 @@ class DevSkinSDK {
   private errorCollector: ErrorCollector | null = null;
   private networkCollector: NetworkCollector | null = null;
   private heatmapCollector: HeatmapCollector | null = null;
+  private screenshotCollector: ScreenshotCollector | null = null;
   // private sessionRecorder: SessionRecorder | null = null; // Replaced by RRWebRecorder
   private rrwebRecorder: RRWebRecorder | null = null;
 
@@ -47,6 +50,12 @@ class DevSkinSDK {
       captureUserAgent: true,
       captureLocation: true,
       captureDevice: true,
+      heatmapOptions: {
+        enabled: true,
+        trackClicks: true,
+        trackScroll: true,
+        trackMouseMovement: false, // Disabled by default to avoid too much data
+      },
       ...config,
     };
 
@@ -60,13 +69,13 @@ class DevSkinSDK {
     // Generate anonymous ID if not exists
     this.anonymousId = this.getOrCreateAnonymousId();
 
-    // Start session
-    this.startSession();
-
-    // Initialize collectors
+    // Initialize collectors BEFORE starting session (so getContextData works)
     this.deviceCollector = new DeviceCollector(this.config);
     this.locationCollector = new LocationCollector(this.config);
     this.browserCollector = new BrowserCollector(this.config);
+
+    // Start session (will now include device/browser/location data)
+    this.startSession();
 
     if (this.config.captureWebVitals) {
       this.performanceCollector = new PerformanceCollector(this.config, this.transport);
@@ -83,10 +92,27 @@ class DevSkinSDK {
       this.networkCollector.start();
     }
 
-    // Initialize heatmap collector
-    if (this.config.heatmapOptions?.enabled) {
-      this.heatmapCollector = new HeatmapCollector(this.config, this.transport);
-      this.heatmapCollector.start();
+    // Initialize heatmap collector - SEMPRE habilitado
+    // Merge default heatmap config with user config
+    const heatmapConfig = {
+      enabled: true,
+      trackClicks: true,
+      trackScroll: true,
+      trackMouseMovement: true, // SEMPRE habilitado
+      mouseMoveSampling: 0.1, // Sample 10% dos movimentos
+      ...this.config.heatmapOptions,
+    };
+
+    this.config.heatmapOptions = heatmapConfig;
+    this.heatmapCollector = new HeatmapCollector(this.config, this.transport);
+    this.heatmapCollector.start();
+
+    // Initialize screenshot collector and capture page
+    this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
+    this.screenshotCollector.captureAndSend(this.sessionId!, window.location.href);
+
+    if (this.config.debug) {
+      console.log('[DevSkin] Heatmap collection enabled (always on)');
     }
 
     // Initialize session recording with rrweb
@@ -118,11 +144,16 @@ class DevSkinSDK {
           this.transport?.sendRecordingEvents(this.sessionId!, events);
         }
       );
-      this.rrwebRecorder.start();
 
-      if (this.config.debug) {
-        console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
-      }
+      // Wait 500ms before starting recording to ensure session is created in backend
+      // This prevents race condition where FullSnapshot is sent before session exists
+      setTimeout(() => {
+        this.rrwebRecorder?.start();
+
+        if (this.config?.debug) {
+          console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
+        }
+      }, 500);
     }
 
     // Track initial page view
@@ -271,6 +302,8 @@ class DevSkinSDK {
    */
   private startSession(): void {
     this.sessionId = this.generateId();
+    this.sessionStartTime = Date.now();
+
     const sessionData = {
       session_id: this.sessionId,
       user_id: this.userId || undefined,
@@ -326,8 +359,24 @@ class DevSkinSDK {
   private setupUnloadTracking(): void {
     window.addEventListener('beforeunload', () => {
       this.track('page_unload');
+
+      // Send session end update with duration AND context data
+      if (this.sessionId && this.sessionStartTime) {
+        const endedAt = new Date();
+        const durationMs = Date.now() - this.sessionStartTime;
+
+        this.transport?.startSession({
+          session_id: this.sessionId,
+          user_id: this.userId || undefined,
+          anonymous_id: this.anonymousId!,
+          ended_at: endedAt.toISOString(),
+          duration_ms: durationMs,
+          ...this.getContextData(), // Include device/browser/location
+        });
+      }
+
       // Send any pending data
-      this.transport?.flush();
+      this.transport?.flush(true); // Use beacon for reliability
     });
   }
 }
@@ -335,6 +384,5 @@ class DevSkinSDK {
 // Create singleton instance
 const DevSkin = new DevSkinSDK();
 
-// Export as default and named export
+// Export as default only for UMD compatibility
 export default DevSkin;
-export { DevSkin };

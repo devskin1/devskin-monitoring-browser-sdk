@@ -68,17 +68,62 @@ export class Transport {
     this.enqueue('performance', metric);
   }
 
-  sendRecordingEvents(sessionId: string, events: eventWithTime[]): void {
-    // Recording events can be large, send immediately
-    this.sendToBackend('/v1/rum/recordings', {
+  async sendRecordingEvents(sessionId: string, events: eventWithTime[]): Promise<void> {
+    // Calculate payload size
+    const payload = {
       session_id: sessionId,
       events,
       timestamp: new Date().toISOString(),
-    });
+      apiKey: this.config.apiKey,
+      appId: this.config.appId,
+    };
+    const payloadSize = new Blob([JSON.stringify(payload)]).size;
+
+    // Check if this batch contains FullSnapshot (type 2)
+    const hasFullSnapshot = events.some(e => e.type === 2);
+    const maxRetries = hasFullSnapshot ? 3 : 1; // Retry FullSnapshot batches up to 3 times
+
+    // Recording events can be large, send immediately with retry logic
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Use XMLHttpRequest for large payloads (more reliable than fetch for large data)
+        if (payloadSize > 100000) { // > 100KB
+          await this.sendToBackendXHR('/v1/rum/recordings', {
+            session_id: sessionId,
+            events,
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          await this.sendToBackend('/v1/rum/recordings', {
+            session_id: sessionId,
+            events,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return; // Success, exit
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          const delay = attempt * 1000; // 1s, 2s, 3s...
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // All retries failed
+    if (this.config.debug) {
+      console.error(`[DevSkin SDK] Failed to send recording events after ${maxRetries} attempts:`, lastError);
+    }
   }
 
   sendHeatmapData(heatmapData: any): void {
     this.enqueue('heatmap', heatmapData);
+  }
+
+  async sendScreenshot(screenshotData: any): Promise<void> {
+    const endpoint = '/v1/sdk/screenshot';
+    await this.sendToBackend(endpoint, { screenshot: screenshotData });
   }
 
   flush(useBeacon = false): void {
@@ -139,10 +184,75 @@ export class Transport {
       case 'performance':
         return '/v1/analytics/performance';
       case 'heatmap':
-        return '/v1/analytics/heatmap';
+        return '/v1/sdk/heatmap';
       default:
         return '/v1/analytics/events';
     }
+  }
+
+  private async sendToBackendXHR(
+    endpoint: string,
+    data: any
+  ): Promise<void> {
+    const url = `${this.apiUrl}${endpoint}`;
+
+    const payload = {
+      ...data,
+      apiKey: this.config.apiKey,
+      appId: this.config.appId,
+      environment: this.config.environment,
+      release: this.config.release,
+    };
+
+    // Apply beforeSend hook if provided
+    if (this.config.beforeSend) {
+      const processed = this.config.beforeSend(payload);
+      if (!processed) {
+        // Hook returned null, don't send
+        return;
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Authorization', `Bearer ${this.config.apiKey}`);
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (this.config.debug) {
+            console.log('[DevSkin] Data sent successfully via XHR:', endpoint);
+          }
+          resolve();
+        } else {
+          console.error('[DevSkin] XHR HTTP Error:', xhr.status, xhr.responseText);
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+        }
+      };
+
+      xhr.onerror = () => {
+        console.error('[DevSkin] XHR network error:', endpoint);
+        reject(new Error('Network error'));
+      };
+
+      xhr.ontimeout = () => {
+        console.error('[DevSkin] XHR timeout:', endpoint);
+        reject(new Error('Request timeout'));
+      };
+
+      // Set a generous timeout for large payloads (30 seconds)
+      xhr.timeout = 30000;
+
+      try {
+        const body = JSON.stringify(payload);
+        xhr.send(body);
+      } catch (error) {
+        console.error('[DevSkin] Failed to send XHR request:', error);
+        reject(error);
+      }
+    });
   }
 
   private async sendToBackend(
@@ -192,6 +302,8 @@ export class Transport {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[DevSkin] HTTP Error:', response.status, errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -199,12 +311,9 @@ export class Transport {
         console.log('[DevSkin] Data sent successfully:', endpoint);
       }
     } catch (error) {
-      if (this.config.debug) {
-        console.error('[DevSkin] Failed to send data:', error);
-      }
-
-      // Retry logic could be added here
-      // For now, we'll just log the error
+      console.error('[DevSkin] Failed to send data to', endpoint, ':', error);
+      // Re-throw for caller to handle
+      throw error;
     }
   }
 

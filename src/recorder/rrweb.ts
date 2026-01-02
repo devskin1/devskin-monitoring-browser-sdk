@@ -1,5 +1,6 @@
 import { record } from 'rrweb';
 import type { eventWithTime } from '@rrweb/types';
+import type { listenerHandler } from '@rrweb/types';
 
 export interface RRWebRecorderConfig {
   enabled: boolean;
@@ -26,6 +27,7 @@ export class RRWebRecorder {
   private sessionId: string;
   private onEventsReady: ((events: eventWithTime[]) => void) | null = null;
   private flushInterval: number | null = null;
+  private hasFullSnapshot: boolean = false;
 
   constructor(sessionId: string, config: RRWebRecorderConfig, onEventsReady: (events: eventWithTime[]) => void) {
     this.sessionId = sessionId;
@@ -45,14 +47,17 @@ export class RRWebRecorder {
     }
 
     try {
-      console.log('[RRWeb] Starting session recording:', this.sessionId);
-
       this.stopFn = record({
         emit: (event) => {
           this.events.push(event);
 
-          // Flush events periodically to avoid memory buildup
-          if (this.events.length >= 50) {
+          // Check if this is a FullSnapshot (type 2)
+          if (event.type === 2) {
+            this.hasFullSnapshot = true;
+            // Send immediately to ensure FullSnapshot reaches backend first
+            this.flush();
+          } else if (this.hasFullSnapshot && this.events.length >= 50) {
+            // After FullSnapshot, batch other events
             this.flush();
           }
         },
@@ -93,13 +98,28 @@ export class RRWebRecorder {
       });
 
       // Set up periodic flush (every 10 seconds)
+      // Only flush if we have FullSnapshot to ensure first batch is complete
       this.flushInterval = window.setInterval(() => {
-        if (this.events.length > 0) {
+        if (this.hasFullSnapshot && this.events.length > 0) {
           this.flush();
         }
       }, 10000);
 
-      console.log('[RRWeb] Recording started successfully');
+      // Safety check: After 2 seconds, force a full snapshot if none captured
+      setTimeout(() => {
+        if (!this.hasFullSnapshot) {
+          // Try to force a full snapshot using rrweb's API
+          try {
+            record.takeFullSnapshot();
+          } catch (error) {
+            // If we have events but no FullSnapshot, flush anyway to not lose data
+            if (this.events.length > 0) {
+              this.hasFullSnapshot = true; // Set to true to allow flushing
+              this.flush();
+            }
+          }
+        }
+      }, 2000);
     } catch (error) {
       console.error('[RRWeb] Failed to start recording:', error);
     }
@@ -109,7 +129,6 @@ export class RRWebRecorder {
     if (this.stopFn) {
       this.stopFn();
       this.stopFn = null;
-      console.log('[RRWeb] Recording stopped');
     }
 
     if (this.flushInterval) {

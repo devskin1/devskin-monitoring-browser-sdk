@@ -23,6 +23,7 @@ export declare class RRWebRecorder {
     private sessionId;
     private onEventsReady;
     private flushInterval;
+    private hasFullSnapshot;
     constructor(sessionId: string, config: RRWebRecorderConfig, onEventsReady: (events: eventWithTime[]) => void);
     start(): void;
     stop(): void;

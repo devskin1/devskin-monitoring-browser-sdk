@@ -5,6 +5,7 @@ declare class DevSkinSDK {
     private sessionId;
     private userId;
     private anonymousId;
+    private sessionStartTime;
     private initialized;
     private deviceCollector;
     private locationCollector;
@@ -13,6 +14,7 @@ declare class DevSkinSDK {
     private errorCollector;
     private networkCollector;
     private heatmapCollector;
+    private screenshotCollector;
     private rrwebRecorder;
     /**
      * Initialize the DevSkin SDK
@@ -65,5 +67,4 @@ declare class DevSkinSDK {
 }
 declare const DevSkin: DevSkinSDK;
 export default DevSkin;
-export { DevSkin };
 //# sourceMappingURL=index.d.ts.map

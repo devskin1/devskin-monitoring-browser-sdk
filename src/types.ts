@@ -87,8 +87,8 @@ export interface UserData {
 export interface SessionData {
   session_id: string;
   user_id?: string;
-  anonymous_id: string;
-  started_at: string;
+  anonymous_id?: string;
+  started_at?: string;
   ended_at?: string;
   duration_ms?: number;
   page_view_count?: number;

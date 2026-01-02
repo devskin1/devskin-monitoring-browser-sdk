@@ -226,11 +226,18 @@ export class ErrorCollector {
         // Call original
         original.apply(console, args);
 
-        // Add breadcrumb
+        // Add breadcrumb (skip DevSkin internal logs to avoid infinite loop)
         if (level === 'warn' || level === 'error') {
+          const message = args.map((arg) => String(arg)).join(' ');
+
+          // Skip DevSkin internal messages
+          if (message.startsWith('[DevSkin]')) {
+            return;
+          }
+
           this.addBreadcrumb({
             category: 'console',
-            message: args.map((arg) => String(arg)).join(' '),
+            message: message,
             level: level === 'warn' ? 'warning' : 'error',
             data: { arguments: args },
           });

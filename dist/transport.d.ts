@@ -14,12 +14,14 @@ export declare class Transport {
     sendError(error: ErrorData): void;
     sendNetworkRequest(request: NetworkRequest): void;
     sendPerformanceMetric(metric: any): void;
-    sendRecordingEvents(sessionId: string, events: eventWithTime[]): void;
+    sendRecordingEvents(sessionId: string, events: eventWithTime[]): Promise<void>;
     sendHeatmapData(heatmapData: any): void;
+    sendScreenshot(screenshotData: any): Promise<void>;
     flush(useBeacon?: boolean): void;
     private enqueue;
     private startPeriodicFlush;
     private getEndpointForType;
+    private sendToBackendXHR;
     private sendToBackend;
     destroy(): void;
 }
