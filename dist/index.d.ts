@@ -7,6 +7,7 @@ declare class DevSkinSDK {
     private anonymousId;
     private sessionStartTime;
     private initialized;
+    private heartbeatInterval;
     private deviceCollector;
     private locationCollector;
     private browserCollector;
@@ -64,6 +65,14 @@ declare class DevSkinSDK {
     private generateId;
     private setupVisibilityTracking;
     private setupUnloadTracking;
+    /**
+     * Start heartbeat to update session duration periodically
+     */
+    private startHeartbeat;
+    /**
+     * Update session duration
+     */
+    private updateSessionDuration;
 }
 declare const DevSkin: DevSkinSDK;
 export default DevSkin;

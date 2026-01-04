@@ -17,9 +17,10 @@ interface QueuedItem {
 export class Transport {
   private queue: QueuedItem[] = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly maxQueueSize = 50;
-  private readonly flushIntervalMs = 5000; // 5 seconds
+  private readonly maxQueueSize = 20; // Reduced from 50
+  private readonly flushIntervalMs = 2000; // 2 seconds (reduced from 5s)
   private readonly apiUrl: string;
+  private sessionId: string | null = null;
 
   constructor(private config: DevSkinConfig) {
     this.apiUrl = config.apiUrl || 'https://api.devskin.com';
@@ -42,6 +43,10 @@ export class Transport {
     }
   }
 
+  setSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+  }
+
   sendEvent(event: EventData): void {
     this.enqueue('event', event);
   }
@@ -51,9 +56,11 @@ export class Transport {
     this.sendToBackend('/v1/analytics/identify', user);
   }
 
-  startSession(session: SessionData): void {
-    // Send session start immediately
-    this.sendToBackend('/v1/analytics/session', session);
+  async startSession(session: SessionData, useBeacon = false): Promise<void> {
+    // Send session start immediately to RUM endpoint
+    // MUST await to ensure session is created before other requests
+    // Use beacon for page unload events (more reliable)
+    await this.sendToBackend('/v1/rum/sessions', session, useBeacon);
   }
 
   sendError(error: ErrorData): void {
@@ -66,6 +73,11 @@ export class Transport {
 
   sendPerformanceMetric(metric: any): void {
     this.enqueue('performance', metric);
+  }
+
+  async sendPageView(pageViewData: any): Promise<void> {
+    // Send page view immediately to RUM endpoint (don't queue)
+    this.sendToBackend('/v1/rum/page-views', pageViewData);
   }
 
   async sendRecordingEvents(sessionId: string, events: eventWithTime[]): Promise<void> {
@@ -134,7 +146,7 @@ export class Transport {
     const items = [...this.queue];
     this.queue = [];
 
-    // Group items by type
+    // Group by type
     const grouped: Record<string, any[]> = {};
     items.forEach((item) => {
       if (!grouped[item.type]) {
@@ -143,10 +155,26 @@ export class Transport {
       grouped[item.type].push(item.data);
     });
 
-    // Send each group
-    Object.entries(grouped).forEach(([type, data]) => {
+    // Send each type appropriately
+    Object.entries(grouped).forEach(([type, dataArray]) => {
       const endpoint = this.getEndpointForType(type);
-      this.sendToBackend(endpoint, { [type + 's']: data }, useBeacon);
+
+      if (type === 'event' && dataArray.length > 1) {
+        // Events with batch support
+        this.sendToBackend('/v1/rum/events/batch', { events: dataArray }, useBeacon);
+      } else if (type === 'heatmap') {
+        // Heatmap expects array format with apiKey and appId
+        this.sendToBackend(endpoint, {
+          heatmaps: dataArray,
+          apiKey: this.config.apiKey,
+          appId: this.config.appId
+        }, useBeacon);
+      } else {
+        // Send each item individually (network, performance, error)
+        dataArray.forEach((data) => {
+          this.sendToBackend(endpoint, data, useBeacon);
+        });
+      }
     });
 
     if (this.config.debug) {
@@ -155,9 +183,25 @@ export class Transport {
   }
 
   private enqueue(type: QueuedItem['type'], data: any): void {
+    // Add applicationId and sessionId to RUM events (event, error, network, performance)
+    // Heatmap uses apiKey/appId in payload root instead
+    let enrichedData = data;
+
+    if (type !== 'heatmap') {
+      enrichedData = {
+        ...data,
+        applicationId: this.config.appId,
+      };
+
+      // Add sessionId to network and performance requests (required by backend)
+      if ((type === 'network' || type === 'performance') && this.sessionId) {
+        enrichedData.sessionId = this.sessionId;
+      }
+    }
+
     this.queue.push({
       type,
-      data,
+      data: enrichedData,
       timestamp: Date.now(),
     });
 
@@ -176,17 +220,17 @@ export class Transport {
   private getEndpointForType(type: string): string {
     switch (type) {
       case 'event':
-        return '/v1/analytics/events';
+        return '/v1/rum/events';
       case 'error':
-        return '/v1/analytics/errors';
+        return '/v1/errors/errors';
       case 'network':
-        return '/v1/analytics/network';
+        return '/v1/rum/network-requests';
       case 'performance':
-        return '/v1/analytics/performance';
+        return '/v1/rum/web-vitals';
       case 'heatmap':
         return '/v1/sdk/heatmap';
       default:
-        return '/v1/analytics/events';
+        return '/v1/rum/events';
     }
   }
 
@@ -199,7 +243,7 @@ export class Transport {
     const payload = {
       ...data,
       apiKey: this.config.apiKey,
-      appId: this.config.appId,
+      applicationId: this.config.appId, // Backend expects 'applicationId'
       environment: this.config.environment,
       release: this.config.release,
     };
@@ -265,7 +309,7 @@ export class Transport {
     const payload = {
       ...data,
       apiKey: this.config.apiKey,
-      appId: this.config.appId,
+      applicationId: this.config.appId, // Backend expects 'applicationId'
       environment: this.config.environment,
       release: this.config.release,
     };

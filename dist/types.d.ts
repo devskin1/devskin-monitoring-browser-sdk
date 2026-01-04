@@ -48,32 +48,33 @@ export interface DevSkinConfig {
     beforeSend?: (event: any) => any | null;
 }
 export interface EventData {
-    event_name: string;
-    event_type: string;
+    eventName: string;
+    eventType: string;
     timestamp: string;
-    session_id: string;
-    user_id?: string;
-    anonymous_id?: string;
+    sessionId: string;
+    userId?: string;
+    anonymousId?: string;
     properties?: Record<string, any>;
-    page_url: string;
-    page_title: string;
+    pageUrl: string;
+    pageTitle: string;
 }
 export interface UserData {
-    user_id: string;
-    anonymous_id?: string;
+    userId: string;
+    anonymousId?: string;
     traits?: Record<string, any>;
-    session_id: string;
+    sessionId: string;
     timestamp: string;
 }
 export interface SessionData {
-    session_id: string;
-    user_id?: string;
-    anonymous_id?: string;
-    started_at?: string;
-    ended_at?: string;
-    duration_ms?: number;
-    page_view_count?: number;
-    event_count?: number;
+    sessionId: string;
+    userId?: string;
+    anonymousId?: string;
+    startedAt?: string;
+    endedAt?: string;
+    durationMs?: number;
+    pageViewCount?: number;
+    eventCount?: number;
+    platform?: string;
     device?: DeviceInfo;
     browser?: BrowserInfo;
     location?: LocationInfo;
@@ -143,24 +144,25 @@ export interface PerformanceMetrics {
     windowLoad?: number;
 }
 export interface NetworkRequest {
+    sessionId?: string;
     url: string;
     method: string;
-    status?: number;
-    duration: number;
-    size?: number;
-    type: string;
+    statusCode?: number;
+    durationMs: number;
+    requestSize?: number;
+    responseSize?: number;
+    requestHeaders?: Record<string, string>;
+    responseHeaders?: Record<string, string>;
+    errorMessage?: string;
     timestamp: string;
-    failed: boolean;
-    headers?: Record<string, string>;
-    body?: any;
 }
 export interface ErrorData {
     message: string;
     stack?: string;
     type: string;
     timestamp: string;
-    session_id: string;
-    user_id?: string;
+    sessionId: string;
+    userId?: string;
     url: string;
     line?: number;
     column?: number;

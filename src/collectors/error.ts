@@ -77,7 +77,7 @@ export class ErrorCollector {
         stack: error.stack,
         type: error.name || 'Error',
         timestamp: new Date().toISOString(),
-        session_id: '', // Will be set by transport
+        sessionId: '', // Will be set by transport
         url: window.location.href,
         breadcrumbs: [...this.breadcrumbs],
         context: {
@@ -104,7 +104,7 @@ export class ErrorCollector {
         message: String(error),
         type: 'Error',
         timestamp: new Date().toISOString(),
-        session_id: '',
+        sessionId: '',
         url: window.location.href,
         breadcrumbs: [...this.breadcrumbs],
         context,

@@ -1,6 +1,6 @@
 {
   "name": "@devskin/browser-sdk",
-  "version": "1.0.25",
+  "version": "1.0.39",
   "description": "DevSkin Browser SDK for complete user analytics and monitoring with rrweb session recording",
   "type": "module",
   "main": "dist/devskin.cjs.js",

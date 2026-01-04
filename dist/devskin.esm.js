@@ -1,3 +1,35 @@
+/******************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global Reflect, Promise, SuppressedError, Symbol, Iterator */
+
+
+function __awaiter$1(thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+}
+
+typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
+    var e = new Error(message);
+    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+};
+
 class DeviceCollector {
     constructor(config) {
         this.config = config;
@@ -114,38 +146,6 @@ class DeviceCollector {
         };
     }
 }
-
-/******************************************************************************
-Copyright (c) Microsoft Corporation.
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-***************************************************************************** */
-/* global Reflect, Promise, SuppressedError, Symbol, Iterator */
-
-
-function __awaiter$1(thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-}
-
-typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
-    var e = new Error(message);
-    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
-};
 
 class LocationCollector {
     constructor(config) {
@@ -334,12 +334,12 @@ class PerformanceCollector {
         if (this.config.debug) {
             console.log(`[DevSkin] Web Vital ${metric.name}:`, metric.value);
         }
-        // Send metric to backend
+        // Send metric to backend - match backend schema
         this.transport.sendPerformanceMetric({
-            name: metric.name,
+            metricName: metric.name, // Changed from 'name' to 'metricName'
             value: metric.value,
             rating: metric.rating,
-            delta: metric.delta,
+            url: window.location.href,
             timestamp: new Date().toISOString(),
         });
     }
@@ -362,19 +362,9 @@ class PerformanceCollector {
                     });
                 }
                 this.transport.sendPerformanceMetric({
-                    name: 'Navigation',
+                    metricName: 'Navigation',
                     value: windowLoad,
-                    details: {
-                        domLoad,
-                        windowLoad,
-                        navigationType: navigation.type,
-                        redirectCount: navigation.redirectCount,
-                        dns: timing.domainLookupEnd - timing.domainLookupStart,
-                        tcp: timing.connectEnd - timing.connectStart,
-                        request: timing.responseStart - timing.requestStart,
-                        response: timing.responseEnd - timing.responseStart,
-                        dom: timing.domComplete - timing.domLoading,
-                    },
+                    url: window.location.href,
                     timestamp: new Date().toISOString(),
                 });
             }, 0);
@@ -408,9 +398,9 @@ class PerformanceCollector {
                     console.log('[DevSkin] Resource Timings:', resourceStats);
                 }
                 this.transport.sendPerformanceMetric({
-                    name: 'Resources',
+                    metricName: 'Resources',
                     value: resources.length,
-                    details: resourceStats,
+                    url: window.location.href,
                     timestamp: new Date().toISOString(),
                 });
             }, 1000);
@@ -427,13 +417,9 @@ class PerformanceCollector {
                             console.log('[DevSkin] Long Task detected:', entry);
                         }
                         this.transport.sendPerformanceMetric({
-                            name: 'LongTask',
+                            metricName: 'LongTask',
                             value: entry.duration,
-                            details: {
-                                name: entry.name,
-                                entryType: entry.entryType,
-                                startTime: entry.startTime,
-                            },
+                            url: window.location.href,
                             timestamp: new Date().toISOString(),
                         });
                     }
@@ -511,7 +497,7 @@ class ErrorCollector {
                 stack: error.stack,
                 type: error.name || 'Error',
                 timestamp: new Date().toISOString(),
-                session_id: '', // Will be set by transport
+                sessionId: '', // Will be set by transport
                 url: window.location.href,
                 breadcrumbs: [...this.breadcrumbs],
                 context: Object.assign(Object.assign({}, context), { userAgent: navigator.userAgent, viewport: {
@@ -534,7 +520,7 @@ class ErrorCollector {
                 message: String(error),
                 type: 'Error',
                 timestamp: new Date().toISOString(),
-                session_id: '',
+                sessionId: '',
                 url: window.location.href,
                 breadcrumbs: [...this.breadcrumbs],
                 context,
@@ -673,7 +659,7 @@ class NetworkCollector {
             return;
         const originalFetch = window.fetch;
         window.fetch = (...args) => __awaiter$1(this, void 0, void 0, function* () {
-            var _a, _b, _c;
+            var _a, _b;
             const [resource, config] = args;
             const url = typeof resource === 'string'
                 ? resource
@@ -699,26 +685,18 @@ class NetworkCollector {
                 const networkRequest = {
                     url,
                     method,
-                    status: response.status,
-                    duration,
-                    size: yield this.getResponseSize(clonedResponse),
-                    type: 'fetch',
+                    statusCode: response.status,
+                    durationMs: duration,
+                    responseSize: yield this.getResponseSize(clonedResponse),
                     timestamp: new Date().toISOString(),
-                    failed: !response.ok,
                 };
                 // Capture headers if enabled
                 if ((_b = this.config.networkRequestOptions) === null || _b === void 0 ? void 0 : _b.captureHeaders) {
-                    networkRequest.headers = this.headersToObject(response.headers);
+                    networkRequest.responseHeaders = this.headersToObject(response.headers);
                 }
-                // Capture body if enabled (only for failed requests to avoid performance issues)
-                if (((_c = this.config.networkRequestOptions) === null || _c === void 0 ? void 0 : _c.captureBody) && !response.ok) {
-                    try {
-                        const text = yield clonedResponse.text();
-                        networkRequest.body = text.substring(0, 10000); // Limit to 10KB
-                    }
-                    catch (error) {
-                        // Body might not be readable
-                    }
+                // Capture error message for failed requests
+                if (!response.ok) {
+                    networkRequest.errorMessage = `HTTP ${response.status} ${response.statusText}`;
                 }
                 if (this.config.debug) {
                     console.log('[DevSkin] Network request tracked:', networkRequest);
@@ -732,10 +710,9 @@ class NetworkCollector {
                     const networkRequest = {
                         url,
                         method,
-                        duration,
-                        type: 'fetch',
+                        durationMs: duration,
                         timestamp: new Date().toISOString(),
-                        failed: true,
+                        errorMessage: error instanceof Error ? error.message : 'Network request failed',
                     };
                     if (this.config.debug) {
                         console.log('[DevSkin] Network request failed:', networkRequest);
@@ -774,7 +751,7 @@ class NetworkCollector {
             const collector = window.__devskinNetworkCollector;
             // Track when request completes
             const handleLoad = () => {
-                var _a, _b, _c, _d;
+                var _a, _b;
                 const duration = Date.now() - devskin.startTime;
                 // Check if should be ignored
                 if (collector === null || collector === void 0 ? void 0 : collector.shouldIgnoreUrl(devskin.url)) {
@@ -789,25 +766,17 @@ class NetworkCollector {
                 const networkRequest = {
                     url: devskin.url,
                     method: devskin.method,
-                    status: xhr.status,
-                    duration,
-                    type: 'xhr',
+                    statusCode: xhr.status,
+                    durationMs: duration,
                     timestamp: new Date().toISOString(),
-                    failed: xhr.status === 0 || xhr.status >= 400,
                 };
                 // Capture headers if enabled
                 if ((_b = collector === null || collector === void 0 ? void 0 : collector.config.networkRequestOptions) === null || _b === void 0 ? void 0 : _b.captureHeaders) {
-                    networkRequest.headers = collector.parseResponseHeaders(xhr.getAllResponseHeaders());
+                    networkRequest.responseHeaders = collector.parseResponseHeaders(xhr.getAllResponseHeaders());
                 }
-                // Capture body if enabled (only for failed requests)
-                if (((_c = collector === null || collector === void 0 ? void 0 : collector.config.networkRequestOptions) === null || _c === void 0 ? void 0 : _c.captureBody) &&
-                    networkRequest.failed) {
-                    try {
-                        networkRequest.body = (_d = xhr.responseText) === null || _d === void 0 ? void 0 : _d.substring(0, 10000);
-                    }
-                    catch (error) {
-                        // Response might not be readable
-                    }
+                // Capture error message for failed requests
+                if (xhr.status === 0 || xhr.status >= 400) {
+                    networkRequest.errorMessage = `HTTP ${xhr.status} ${xhr.statusText}`;
                 }
                 if (collector === null || collector === void 0 ? void 0 : collector.config.debug) {
                     console.log('[DevSkin] XHR request tracked:', networkRequest);
@@ -820,10 +789,9 @@ class NetworkCollector {
                     const networkRequest = {
                         url: devskin.url,
                         method: devskin.method,
-                        duration,
-                        type: 'xhr',
+                        durationMs: duration,
                         timestamp: new Date().toISOString(),
-                        failed: true,
+                        errorMessage: 'XHR request failed',
                     };
                     if (collector === null || collector === void 0 ? void 0 : collector.config.debug) {
                         console.log('[DevSkin] XHR request failed:', networkRequest);
@@ -13451,15 +13419,20 @@ record.takeFullSnapshot = (isCheckout) => {
 record.mirror = mirror;
 
 class RRWebRecorder {
-    constructor(sessionId, config, onEventsReady) {
+    constructor(sessionId, config, onEventsReady, sessionStartTime = 0) {
         this.stopFn = null;
         this.events = [];
         this.onEventsReady = null;
         this.flushInterval = null;
         this.hasFullSnapshot = false;
+        this.sessionStartTime = 0; // Session start time (for relative timestamps)
+        this.recordingStartTime = 0; // When this recorder instance started
         this.sessionId = sessionId;
         this.config = config;
         this.onEventsReady = onEventsReady;
+        this.sessionStartTime = sessionStartTime || Date.now();
+        this.recordingStartTime = Date.now();
+        console.log(`[RRWeb] Recording initialized - session started at ${this.sessionStartTime}, recording started at ${this.recordingStartTime}`);
     }
     start() {
         if (!this.config.enabled) {
@@ -13473,6 +13446,13 @@ class RRWebRecorder {
         try {
             this.stopFn = record({
                 emit: (event) => {
+                    // Convert absolute timestamps to relative to session start
+                    // This ensures continuity across page navigations within same session
+                    const originalTimestamp = event.timestamp;
+                    event.timestamp = event.timestamp - this.sessionStartTime;
+                    if (this.config.enabled && event.type === 2) {
+                        console.log(`[RRWeb] FullSnapshot - original: ${originalTimestamp}, relative: ${event.timestamp}, session start: ${this.sessionStartTime}`);
+                    }
                     this.events.push(event);
                     // Check if this is a FullSnapshot (type 2)
                     if (event.type === 2) {
@@ -13480,8 +13460,8 @@ class RRWebRecorder {
                         // Send immediately to ensure FullSnapshot reaches backend first
                         this.flush();
                     }
-                    else if (this.hasFullSnapshot && this.events.length >= 50) {
-                        // After FullSnapshot, batch other events
+                    else if (this.hasFullSnapshot && this.events.length >= 20) {
+                        // After FullSnapshot, batch other events (reduced from 50 to 20)
                         this.flush();
                     }
                 },
@@ -13520,13 +13500,13 @@ class RRWebRecorder {
                 // Capture iframe content
                 recordCrossOriginIframes: false, // Security: don't record cross-origin iframes
             });
-            // Set up periodic flush (every 10 seconds)
+            // Set up periodic flush (every 2 seconds)
             // Only flush if we have FullSnapshot to ensure first batch is complete
             this.flushInterval = window.setInterval(() => {
                 if (this.hasFullSnapshot && this.events.length > 0) {
                     this.flush();
                 }
-            }, 10000);
+            }, 2000); // Reduced from 10s to 2s
             // Safety check: After 2 seconds, force a full snapshot if none captured
             setTimeout(() => {
                 if (!this.hasFullSnapshot) {
@@ -13584,8 +13564,9 @@ class Transport {
         this.config = config;
         this.queue = [];
         this.flushInterval = null;
-        this.maxQueueSize = 50;
-        this.flushIntervalMs = 5000; // 5 seconds
+        this.maxQueueSize = 20; // Reduced from 50
+        this.flushIntervalMs = 2000; // 2 seconds (reduced from 5s)
+        this.sessionId = null;
         this.apiUrl = config.apiUrl || 'https://api.devskin.com';
         // Start periodic flush
         this.startPeriodicFlush();
@@ -13602,6 +13583,9 @@ class Transport {
             });
         }
     }
+    setSessionId(sessionId) {
+        this.sessionId = sessionId;
+    }
     sendEvent(event) {
         this.enqueue('event', event);
     }
@@ -13609,9 +13593,13 @@ class Transport {
         // Send user identification immediately (don't queue)
         this.sendToBackend('/v1/analytics/identify', user);
     }
-    startSession(session) {
-        // Send session start immediately
-        this.sendToBackend('/v1/analytics/session', session);
+    startSession(session_1) {
+        return __awaiter$1(this, arguments, void 0, function* (session, useBeacon = false) {
+            // Send session start immediately to RUM endpoint
+            // MUST await to ensure session is created before other requests
+            // Use beacon for page unload events (more reliable)
+            yield this.sendToBackend('/v1/rum/sessions', session, useBeacon);
+        });
     }
     sendError(error) {
         this.enqueue('error', error);
@@ -13621,6 +13609,12 @@ class Transport {
     }
     sendPerformanceMetric(metric) {
         this.enqueue('performance', metric);
+    }
+    sendPageView(pageViewData) {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            // Send page view immediately to RUM endpoint (don't queue)
+            this.sendToBackend('/v1/rum/page-views', pageViewData);
+        });
     }
     sendRecordingEvents(sessionId, events) {
         return __awaiter$1(this, void 0, void 0, function* () {
@@ -13686,7 +13680,7 @@ class Transport {
         }
         const items = [...this.queue];
         this.queue = [];
-        // Group items by type
+        // Group by type
         const grouped = {};
         items.forEach((item) => {
             if (!grouped[item.type]) {
@@ -13694,19 +13688,46 @@ class Transport {
             }
             grouped[item.type].push(item.data);
         });
-        // Send each group
-        Object.entries(grouped).forEach(([type, data]) => {
+        // Send each type appropriately
+        Object.entries(grouped).forEach(([type, dataArray]) => {
             const endpoint = this.getEndpointForType(type);
-            this.sendToBackend(endpoint, { [type + 's']: data }, useBeacon);
+            if (type === 'event' && dataArray.length > 1) {
+                // Events with batch support
+                this.sendToBackend('/v1/rum/events/batch', { events: dataArray }, useBeacon);
+            }
+            else if (type === 'heatmap') {
+                // Heatmap expects array format with apiKey and appId
+                this.sendToBackend(endpoint, {
+                    heatmaps: dataArray,
+                    apiKey: this.config.apiKey,
+                    appId: this.config.appId
+                }, useBeacon);
+            }
+            else {
+                // Send each item individually (network, performance, error)
+                dataArray.forEach((data) => {
+                    this.sendToBackend(endpoint, data, useBeacon);
+                });
+            }
         });
         if (this.config.debug) {
             console.log(`[DevSkin] Flushed ${items.length} items to backend`);
         }
     }
     enqueue(type, data) {
+        // Add applicationId and sessionId to RUM events (event, error, network, performance)
+        // Heatmap uses apiKey/appId in payload root instead
+        let enrichedData = data;
+        if (type !== 'heatmap') {
+            enrichedData = Object.assign(Object.assign({}, data), { applicationId: this.config.appId });
+            // Add sessionId to network and performance requests (required by backend)
+            if ((type === 'network' || type === 'performance') && this.sessionId) {
+                enrichedData.sessionId = this.sessionId;
+            }
+        }
         this.queue.push({
             type,
-            data,
+            data: enrichedData,
             timestamp: Date.now(),
         });
         // Flush if queue is full
@@ -13722,23 +13743,23 @@ class Transport {
     getEndpointForType(type) {
         switch (type) {
             case 'event':
-                return '/v1/analytics/events';
+                return '/v1/rum/events';
             case 'error':
-                return '/v1/analytics/errors';
+                return '/v1/errors/errors';
             case 'network':
-                return '/v1/analytics/network';
+                return '/v1/rum/network-requests';
             case 'performance':
-                return '/v1/analytics/performance';
+                return '/v1/rum/web-vitals';
             case 'heatmap':
                 return '/v1/sdk/heatmap';
             default:
-                return '/v1/analytics/events';
+                return '/v1/rum/events';
         }
     }
     sendToBackendXHR(endpoint, data) {
         return __awaiter$1(this, void 0, void 0, function* () {
             const url = `${this.apiUrl}${endpoint}`;
-            const payload = Object.assign(Object.assign({}, data), { apiKey: this.config.apiKey, appId: this.config.appId, environment: this.config.environment, release: this.config.release });
+            const payload = Object.assign(Object.assign({}, data), { apiKey: this.config.apiKey, applicationId: this.config.appId, environment: this.config.environment, release: this.config.release });
             // Apply beforeSend hook if provided
             if (this.config.beforeSend) {
                 const processed = this.config.beforeSend(payload);
@@ -13788,7 +13809,7 @@ class Transport {
     sendToBackend(endpoint_1, data_1) {
         return __awaiter$1(this, arguments, void 0, function* (endpoint, data, useBeacon = false) {
             const url = `${this.apiUrl}${endpoint}`;
-            const payload = Object.assign(Object.assign({}, data), { apiKey: this.config.apiKey, appId: this.config.appId, environment: this.config.environment, release: this.config.release });
+            const payload = Object.assign(Object.assign({}, data), { apiKey: this.config.apiKey, applicationId: this.config.appId, environment: this.config.environment, release: this.config.release });
             // Apply beforeSend hook if provided
             if (this.config.beforeSend) {
                 const processed = this.config.beforeSend(payload);
@@ -13851,6 +13872,7 @@ class DevSkinSDK {
         this.anonymousId = null;
         this.sessionStartTime = 0;
         this.initialized = false;
+        this.heartbeatInterval = null;
         // Collectors
         this.deviceCollector = null;
         this.locationCollector = null;
@@ -13867,7 +13889,6 @@ class DevSkinSDK {
      * Initialize the DevSkin SDK
      */
     init(config) {
-        var _a;
         if (this.initialized) {
             console.warn('[DevSkin] SDK already initialized');
             return;
@@ -13890,69 +13911,75 @@ class DevSkinSDK {
         this.locationCollector = new LocationCollector(this.config);
         this.browserCollector = new BrowserCollector(this.config);
         // Start session (will now include device/browser/location data)
-        this.startSession();
-        if (this.config.captureWebVitals) {
-            this.performanceCollector = new PerformanceCollector(this.config, this.transport);
-            this.performanceCollector.start();
-        }
-        if (this.config.captureErrors) {
-            this.errorCollector = new ErrorCollector(this.config, this.transport);
-            this.errorCollector.start();
-        }
-        if (this.config.captureNetworkRequests) {
-            this.networkCollector = new NetworkCollector(this.config, this.transport);
-            this.networkCollector.start();
-        }
-        // Initialize heatmap collector - SEMPRE habilitado
-        // Merge default heatmap config with user config
-        const heatmapConfig = Object.assign({ enabled: true, trackClicks: true, trackScroll: true, trackMouseMovement: true, mouseMoveSampling: 0.1 }, this.config.heatmapOptions);
-        this.config.heatmapOptions = heatmapConfig;
-        this.heatmapCollector = new HeatmapCollector(this.config, this.transport);
-        this.heatmapCollector.start();
-        // Initialize screenshot collector and capture page
-        this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
-        this.screenshotCollector.captureAndSend(this.sessionId, window.location.href);
-        if (this.config.debug) {
-            console.log('[DevSkin] Heatmap collection enabled (always on)');
-        }
-        // Initialize session recording with rrweb
-        if ((_a = this.config.sessionRecording) === null || _a === void 0 ? void 0 : _a.enabled) {
-            // Use RRWebRecorder for complete DOM recording
-            this.rrwebRecorder = new RRWebRecorder(this.sessionId, {
-                enabled: true,
-                sampleRate: this.config.sessionRecording.sampling || 0.5,
-                blockClass: 'rr-block',
-                ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
-                maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
-                    ? this.config.sessionRecording.maskAllInputs
-                    : true,
-                maskInputOptions: {
-                    password: true,
-                    email: true,
-                    tel: true,
-                },
-                recordCanvas: this.config.sessionRecording.recordCanvas || false,
-                collectFonts: true,
-                inlineStylesheet: true,
-                checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
-                checkoutEveryNth: 200, // Every 200 events
-            }, (events) => {
-                var _a;
-                // Send rrweb events to backend
-                (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendRecordingEvents(this.sessionId, events);
-            });
-            // Wait 500ms before starting recording to ensure session is created in backend
-            // This prevents race condition where FullSnapshot is sent before session exists
-            setTimeout(() => {
-                var _a, _b;
-                (_a = this.rrwebRecorder) === null || _a === void 0 ? void 0 : _a.start();
+        // Wait for session creation to complete before starting collectors
+        this.startSession().then(() => {
+            // Session created, now safe to start collectors that send data
+            var _a, _b;
+            if (this.config.captureWebVitals) {
+                this.performanceCollector = new PerformanceCollector(this.config, this.transport);
+                this.performanceCollector.start();
+            }
+            if (this.config.captureErrors) {
+                this.errorCollector = new ErrorCollector(this.config, this.transport);
+                this.errorCollector.start();
+            }
+            if (this.config.captureNetworkRequests) {
+                this.networkCollector = new NetworkCollector(this.config, this.transport);
+                this.networkCollector.start();
+            }
+            // Initialize heatmap collector - SEMPRE habilitado
+            // Merge default heatmap config with user config
+            const heatmapConfig = Object.assign({ enabled: true, trackClicks: true, trackScroll: true, trackMouseMovement: true, mouseMoveSampling: 0.1 }, this.config.heatmapOptions);
+            this.config.heatmapOptions = heatmapConfig;
+            this.heatmapCollector = new HeatmapCollector(this.config, this.transport);
+            this.heatmapCollector.start();
+            // Initialize screenshot collector and capture page
+            this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
+            this.screenshotCollector.captureAndSend(this.sessionId, window.location.href);
+            if (this.config.debug) {
+                console.log('[DevSkin] Heatmap collection enabled (always on)');
+            }
+            // Initialize session recording with rrweb
+            if ((_a = this.config.sessionRecording) === null || _a === void 0 ? void 0 : _a.enabled) {
+                // Use RRWebRecorder for complete DOM recording
+                // Pass sessionStartTime to ensure timestamp continuity across page navigations
+                this.rrwebRecorder = new RRWebRecorder(this.sessionId, {
+                    enabled: true,
+                    sampleRate: this.config.sessionRecording.sampling || 0.5,
+                    blockClass: 'rr-block',
+                    ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
+                    maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
+                        ? this.config.sessionRecording.maskAllInputs
+                        : true,
+                    maskInputOptions: {
+                        password: true,
+                        email: true,
+                        tel: true,
+                    },
+                    recordCanvas: this.config.sessionRecording.recordCanvas || false,
+                    collectFonts: true,
+                    inlineStylesheet: true,
+                    checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
+                    checkoutEveryNth: 200, // Every 200 events
+                }, (events) => {
+                    var _a;
+                    // Send rrweb events to backend
+                    (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendRecordingEvents(this.sessionId, events);
+                }, this.sessionStartTime // Pass session start time for timestamp continuity
+                );
+                // Start recording immediately (session already created)
+                this.rrwebRecorder.start();
                 if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
                     console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
                 }
-            }, 500);
-        }
-        // Track initial page view
-        this.trackPageView();
+            }
+            // Track initial page view
+            this.trackPageView();
+            // Start heartbeat to update session duration every 30 seconds
+            this.startHeartbeat();
+        }).catch((err) => {
+            console.error('[DevSkin] Failed to create session:', err);
+        });
         // Track page visibility changes
         this.setupVisibilityTracking();
         // Track page unload
@@ -13972,15 +13999,15 @@ class DevSkinSDK {
             return;
         }
         const eventData = {
-            event_name: eventName,
-            event_type: 'track',
+            eventName: eventName,
+            eventType: 'track',
             timestamp: new Date().toISOString(),
-            session_id: this.sessionId,
-            user_id: this.userId || undefined,
-            anonymous_id: this.anonymousId || undefined,
+            sessionId: this.sessionId,
+            userId: this.userId || undefined,
+            anonymousId: this.anonymousId || undefined,
             properties: Object.assign(Object.assign({}, properties), this.getContextData()),
-            page_url: window.location.href,
-            page_title: document.title,
+            pageUrl: window.location.href,
+            pageTitle: document.title,
         };
         (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendEvent(eventData);
         if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
@@ -13991,7 +14018,24 @@ class DevSkinSDK {
      * Track a page view
      */
     trackPageView(properties) {
+        var _a, _b;
+        if (!this.initialized) {
+            console.warn('[DevSkin] SDK not initialized. Call init() first.');
+            return;
+        }
+        // Generate unique page view ID
+        const pageViewId = this.generateId();
+        // Send to RUM page-views endpoint
+        (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendPageView(Object.assign({ sessionId: this.sessionId, pageViewId: pageViewId, url: window.location.href, path: window.location.pathname, queryParams: window.location.search, referrer: document.referrer, title: document.title, timestamp: new Date().toISOString() }, properties));
+        // Also track as analytics event for backwards compatibility
         this.track('page_view', Object.assign({ path: window.location.pathname, search: window.location.search, hash: window.location.hash, referrer: document.referrer }, properties));
+        if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+            console.log('[DevSkin] Page view tracked:', {
+                sessionId: this.sessionId,
+                pageViewId: pageViewId,
+                url: window.location.href,
+            });
+        }
     }
     /**
      * Identify a user
@@ -14004,10 +14048,10 @@ class DevSkinSDK {
         }
         this.userId = userId;
         const userData = {
-            user_id: userId,
-            anonymous_id: this.anonymousId || undefined,
+            userId: userId,
+            anonymousId: this.anonymousId || undefined,
             traits: Object.assign(Object.assign({}, traits), this.getContextData()),
-            session_id: this.sessionId,
+            sessionId: this.sessionId,
             timestamp: new Date().toISOString(),
         };
         (_a = this.transport) === null || _a === void 0 ? void 0 : _a.identifyUser(userData);
@@ -14060,22 +14104,68 @@ class DevSkinSDK {
      * Private methods
      */
     startSession() {
-        var _a;
-        this.sessionId = this.generateId();
-        this.sessionStartTime = Date.now();
-        const sessionData = Object.assign({ session_id: this.sessionId, user_id: this.userId || undefined, anonymous_id: this.anonymousId, started_at: new Date().toISOString() }, this.getContextData());
-        (_a = this.transport) === null || _a === void 0 ? void 0 : _a.startSession(sessionData);
+        return __awaiter$1(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d, _e;
+            // Check if there's an active session (stored in sessionStorage to persist across page navigations)
+            const existingSessionId = sessionStorage.getItem('devskin_session_id');
+            const existingSessionStart = sessionStorage.getItem('devskin_session_start');
+            if (existingSessionId && existingSessionStart) {
+                // Resume existing session
+                this.sessionId = existingSessionId;
+                this.sessionStartTime = parseInt(existingSessionStart, 10);
+                // Set sessionId in transport so it can be added to network/performance requests
+                (_a = this.transport) === null || _a === void 0 ? void 0 : _a.setSessionId(this.sessionId);
+                if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+                    console.log('[DevSkin] Resuming existing session:', this.sessionId);
+                }
+                // Send page view but DON'T create a new session
+                // The session is already created, just continue it
+                return;
+            }
+            // Create new session
+            this.sessionId = this.generateId();
+            this.sessionStartTime = Date.now();
+            // Store in sessionStorage (persists across page navigations in same tab)
+            sessionStorage.setItem('devskin_session_id', this.sessionId);
+            sessionStorage.setItem('devskin_session_start', this.sessionStartTime.toString());
+            // Set sessionId in transport so it can be added to network/performance requests
+            (_c = this.transport) === null || _c === void 0 ? void 0 : _c.setSessionId(this.sessionId);
+            const sessionData = Object.assign({ sessionId: this.sessionId, userId: this.userId || undefined, anonymousId: this.anonymousId, startedAt: new Date().toISOString(), platform: 'web' }, this.getContextData());
+            // CRITICAL: Await session creation to ensure it exists before sending metrics/requests
+            yield ((_d = this.transport) === null || _d === void 0 ? void 0 : _d.startSession(sessionData));
+            if ((_e = this.config) === null || _e === void 0 ? void 0 : _e.debug) {
+                console.log('[DevSkin] New session created:', this.sessionId);
+            }
+        });
     }
     getContextData() {
+        var _a, _b, _c, _d;
         const context = {};
+        // Flatten device data to match backend schema
         if (this.deviceCollector) {
-            context.device = this.deviceCollector.collect();
+            const device = this.deviceCollector.collect();
+            context.deviceType = device.type;
+            context.deviceModel = device.model;
+            context.osName = (_a = device.os) === null || _a === void 0 ? void 0 : _a.name;
+            context.osVersion = (_b = device.os) === null || _b === void 0 ? void 0 : _b.version;
+            context.screenWidth = (_c = device.screen) === null || _c === void 0 ? void 0 : _c.width;
+            context.screenHeight = (_d = device.screen) === null || _d === void 0 ? void 0 : _d.height;
+            context.viewportWidth = window.innerWidth;
+            context.viewportHeight = window.innerHeight;
         }
+        // Flatten browser data to match backend schema
         if (this.browserCollector) {
-            context.browser = this.browserCollector.collect();
+            const browser = this.browserCollector.collect();
+            context.browserName = browser.name;
+            context.browserVersion = browser.version;
+            context.userAgent = browser.userAgent;
         }
+        // Flatten location data to match backend schema
         if (this.locationCollector) {
-            context.location = this.locationCollector.collect();
+            const location = this.locationCollector.collect();
+            context.country = location.country;
+            context.city = location.city;
+            context.ipAddress = undefined; // Will be set by backend from request
         }
         return context;
     }
@@ -14101,18 +14191,66 @@ class DevSkinSDK {
         });
     }
     setupUnloadTracking() {
-        window.addEventListener('beforeunload', () => {
+        // CRITICAL: Flush data BEFORE page unloads to avoid losing final events
+        // IMPORTANT: NEVER clear sessionStorage - it expires naturally when tab closes
+        // 1. visibilitychange - fires when tab is hidden (most reliable)
+        document.addEventListener('visibilitychange', () => {
             var _a, _b;
-            this.track('page_unload');
-            // Send session end update with duration AND context data
-            if (this.sessionId && this.sessionStartTime) {
-                const endedAt = new Date();
-                const durationMs = Date.now() - this.sessionStartTime;
-                (_a = this.transport) === null || _a === void 0 ? void 0 : _a.startSession(Object.assign({ session_id: this.sessionId, user_id: this.userId || undefined, anonymous_id: this.anonymousId, ended_at: endedAt.toISOString(), duration_ms: durationMs }, this.getContextData()));
+            if (document.hidden) {
+                // User switched tabs or minimized - update duration and flush
+                this.updateSessionDuration();
+                (_a = this.rrwebRecorder) === null || _a === void 0 ? void 0 : _a.stop(); // Stop recording and flush
+                (_b = this.transport) === null || _b === void 0 ? void 0 : _b.flush(true); // Use beacon
             }
-            // Send any pending data
+        });
+        // 2. pagehide - fires when page is being unloaded
+        window.addEventListener('pagehide', () => {
+            var _a, _b;
+            // Track navigation (we can't distinguish between page navigation and tab close reliably)
+            this.track('page_navigation');
+            // Update duration but DON'T mark as ending (let heartbeat timeout handle session expiry)
+            this.updateSessionDuration(false);
+            // NEVER clear sessionStorage - it persists across navigations in same tab
+            // and expires automatically when tab actually closes
+            // Flush data before page unloads
+            (_a = this.rrwebRecorder) === null || _a === void 0 ? void 0 : _a.stop(); // Stop recording and flush remaining events
             (_b = this.transport) === null || _b === void 0 ? void 0 : _b.flush(true); // Use beacon for reliability
         });
+        // 3. beforeunload - backup for older browsers
+        window.addEventListener('beforeunload', () => {
+            var _a, _b;
+            // Update duration but DON'T mark as ending
+            this.updateSessionDuration(false);
+            (_a = this.rrwebRecorder) === null || _a === void 0 ? void 0 : _a.stop();
+            (_b = this.transport) === null || _b === void 0 ? void 0 : _b.flush(true);
+        });
+    }
+    /**
+     * Start heartbeat to update session duration periodically
+     */
+    startHeartbeat() {
+        // Update duration every 30 seconds
+        this.heartbeatInterval = setInterval(() => {
+            this.updateSessionDuration();
+        }, 30000); // 30 seconds
+    }
+    /**
+     * Update session duration
+     */
+    updateSessionDuration(isEnding = false) {
+        var _a, _b;
+        if (!this.sessionId || !this.sessionStartTime)
+            return;
+        const durationMs = Date.now() - this.sessionStartTime;
+        const payload = Object.assign({ sessionId: this.sessionId, userId: this.userId || undefined, anonymousId: this.anonymousId, durationMs: durationMs, platform: 'web' }, this.getContextData());
+        if (isEnding) {
+            payload.endedAt = new Date().toISOString();
+        }
+        // Use beacon if ending, otherwise regular request
+        (_a = this.transport) === null || _a === void 0 ? void 0 : _a.startSession(payload, isEnding);
+        if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+            console.log('[DevSkin] Session duration updated:', durationMs, 'ms', isEnding ? '(ending)' : '');
+        }
     }
 }
 // Create singleton instance

@@ -28,11 +28,17 @@ export class RRWebRecorder {
   private onEventsReady: ((events: eventWithTime[]) => void) | null = null;
   private flushInterval: number | null = null;
   private hasFullSnapshot: boolean = false;
+  private sessionStartTime: number = 0; // Session start time (for relative timestamps)
+  private recordingStartTime: number = 0; // When this recorder instance started
 
-  constructor(sessionId: string, config: RRWebRecorderConfig, onEventsReady: (events: eventWithTime[]) => void) {
+  constructor(sessionId: string, config: RRWebRecorderConfig, onEventsReady: (events: eventWithTime[]) => void, sessionStartTime: number = 0) {
     this.sessionId = sessionId;
     this.config = config;
     this.onEventsReady = onEventsReady;
+    this.sessionStartTime = sessionStartTime || Date.now();
+    this.recordingStartTime = Date.now();
+
+    console.log(`[RRWeb] Recording initialized - session started at ${this.sessionStartTime}, recording started at ${this.recordingStartTime}`);
   }
 
   start(): void {
@@ -49,6 +55,15 @@ export class RRWebRecorder {
     try {
       this.stopFn = record({
         emit: (event) => {
+          // Convert absolute timestamps to relative to session start
+          // This ensures continuity across page navigations within same session
+          const originalTimestamp = event.timestamp;
+          event.timestamp = event.timestamp - this.sessionStartTime;
+
+          if (this.config.enabled && event.type === 2) {
+            console.log(`[RRWeb] FullSnapshot - original: ${originalTimestamp}, relative: ${event.timestamp}, session start: ${this.sessionStartTime}`);
+          }
+
           this.events.push(event);
 
           // Check if this is a FullSnapshot (type 2)
@@ -56,8 +71,8 @@ export class RRWebRecorder {
             this.hasFullSnapshot = true;
             // Send immediately to ensure FullSnapshot reaches backend first
             this.flush();
-          } else if (this.hasFullSnapshot && this.events.length >= 50) {
-            // After FullSnapshot, batch other events
+          } else if (this.hasFullSnapshot && this.events.length >= 20) {
+            // After FullSnapshot, batch other events (reduced from 50 to 20)
             this.flush();
           }
         },
@@ -97,13 +112,13 @@ export class RRWebRecorder {
         recordCrossOriginIframes: false, // Security: don't record cross-origin iframes
       });
 
-      // Set up periodic flush (every 10 seconds)
+      // Set up periodic flush (every 2 seconds)
       // Only flush if we have FullSnapshot to ensure first batch is complete
       this.flushInterval = window.setInterval(() => {
         if (this.hasFullSnapshot && this.events.length > 0) {
           this.flush();
         }
-      }, 10000);
+      }, 2000); // Reduced from 10s to 2s
 
       // Safety check: After 2 seconds, force a full snapshot if none captured
       setTimeout(() => {

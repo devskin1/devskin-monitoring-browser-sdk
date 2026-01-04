@@ -20,6 +20,7 @@ class DevSkinSDK {
   private anonymousId: string | null = null;
   private sessionStartTime: number = 0;
   private initialized = false;
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
   // Collectors
   private deviceCollector: DeviceCollector | null = null;
@@ -75,89 +76,96 @@ class DevSkinSDK {
     this.browserCollector = new BrowserCollector(this.config);
 
     // Start session (will now include device/browser/location data)
-    this.startSession();
+    // Wait for session creation to complete before starting collectors
+    this.startSession().then(() => {
+      // Session created, now safe to start collectors that send data
 
-    if (this.config.captureWebVitals) {
-      this.performanceCollector = new PerformanceCollector(this.config, this.transport);
-      this.performanceCollector.start();
-    }
+      if (this.config!.captureWebVitals) {
+        this.performanceCollector = new PerformanceCollector(this.config!, this.transport!);
+        this.performanceCollector.start();
+      }
 
-    if (this.config.captureErrors) {
-      this.errorCollector = new ErrorCollector(this.config, this.transport);
-      this.errorCollector.start();
-    }
+      if (this.config!.captureErrors) {
+        this.errorCollector = new ErrorCollector(this.config!, this.transport!);
+        this.errorCollector.start();
+      }
 
-    if (this.config.captureNetworkRequests) {
-      this.networkCollector = new NetworkCollector(this.config, this.transport);
-      this.networkCollector.start();
-    }
+      if (this.config!.captureNetworkRequests) {
+        this.networkCollector = new NetworkCollector(this.config!, this.transport!);
+        this.networkCollector.start();
+      }
 
-    // Initialize heatmap collector - SEMPRE habilitado
-    // Merge default heatmap config with user config
-    const heatmapConfig = {
-      enabled: true,
-      trackClicks: true,
-      trackScroll: true,
-      trackMouseMovement: true, // SEMPRE habilitado
-      mouseMoveSampling: 0.1, // Sample 10% dos movimentos
-      ...this.config.heatmapOptions,
-    };
+      // Initialize heatmap collector - SEMPRE habilitado
+      // Merge default heatmap config with user config
+      const heatmapConfig = {
+        enabled: true,
+        trackClicks: true,
+        trackScroll: true,
+        trackMouseMovement: true, // SEMPRE habilitado
+        mouseMoveSampling: 0.1, // Sample 10% dos movimentos
+        ...this.config!.heatmapOptions,
+      };
 
-    this.config.heatmapOptions = heatmapConfig;
-    this.heatmapCollector = new HeatmapCollector(this.config, this.transport);
-    this.heatmapCollector.start();
+      this.config!.heatmapOptions = heatmapConfig;
+      this.heatmapCollector = new HeatmapCollector(this.config!, this.transport!);
+      this.heatmapCollector.start();
 
-    // Initialize screenshot collector and capture page
-    this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
-    this.screenshotCollector.captureAndSend(this.sessionId!, window.location.href);
+      // Initialize screenshot collector and capture page
+      this.screenshotCollector = new ScreenshotCollector(this.config!, this.transport!);
+      this.screenshotCollector.captureAndSend(this.sessionId!, window.location.href);
 
-    if (this.config.debug) {
-      console.log('[DevSkin] Heatmap collection enabled (always on)');
-    }
+      if (this.config!.debug) {
+        console.log('[DevSkin] Heatmap collection enabled (always on)');
+      }
 
-    // Initialize session recording with rrweb
-    if (this.config.sessionRecording?.enabled) {
-      // Use RRWebRecorder for complete DOM recording
-      this.rrwebRecorder = new RRWebRecorder(
-        this.sessionId!,
-        {
-          enabled: true,
-          sampleRate: this.config.sessionRecording.sampling || 0.5,
-          blockClass: 'rr-block',
-          ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
-          maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
-            ? this.config.sessionRecording.maskAllInputs
-            : true,
-          maskInputOptions: {
-            password: true,
-            email: true,
-            tel: true,
+      // Initialize session recording with rrweb
+      if (this.config!.sessionRecording?.enabled) {
+        // Use RRWebRecorder for complete DOM recording
+        // Pass sessionStartTime to ensure timestamp continuity across page navigations
+        this.rrwebRecorder = new RRWebRecorder(
+          this.sessionId!,
+          {
+            enabled: true,
+            sampleRate: this.config!.sessionRecording.sampling || 0.5,
+            blockClass: 'rr-block',
+            ignoreClass: this.config!.sessionRecording.ignoreClass || 'rr-ignore',
+            maskAllInputs: this.config!.sessionRecording.maskAllInputs !== undefined
+              ? this.config!.sessionRecording.maskAllInputs
+              : true,
+            maskInputOptions: {
+              password: true,
+              email: true,
+              tel: true,
+            },
+            recordCanvas: this.config!.sessionRecording.recordCanvas || false,
+            collectFonts: true,
+            inlineStylesheet: true,
+            checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
+            checkoutEveryNth: 200, // Every 200 events
           },
-          recordCanvas: this.config.sessionRecording.recordCanvas || false,
-          collectFonts: true,
-          inlineStylesheet: true,
-          checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
-          checkoutEveryNth: 200, // Every 200 events
-        },
-        (events: eventWithTime[]) => {
-          // Send rrweb events to backend
-          this.transport?.sendRecordingEvents(this.sessionId!, events);
-        }
-      );
+          (events: eventWithTime[]) => {
+            // Send rrweb events to backend
+            this.transport?.sendRecordingEvents(this.sessionId!, events);
+          },
+          this.sessionStartTime // Pass session start time for timestamp continuity
+        );
 
-      // Wait 500ms before starting recording to ensure session is created in backend
-      // This prevents race condition where FullSnapshot is sent before session exists
-      setTimeout(() => {
-        this.rrwebRecorder?.start();
+        // Start recording immediately (session already created)
+        this.rrwebRecorder.start();
 
         if (this.config?.debug) {
           console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
         }
-      }, 500);
-    }
+      }
 
-    // Track initial page view
-    this.trackPageView();
+      // Track initial page view
+      this.trackPageView();
+
+      // Start heartbeat to update session duration every 30 seconds
+      this.startHeartbeat();
+    }).catch((err) => {
+      console.error('[DevSkin] Failed to create session:', err);
+    });
 
     // Track page visibility changes
     this.setupVisibilityTracking();
@@ -182,18 +190,18 @@ class DevSkinSDK {
     }
 
     const eventData: EventData = {
-      event_name: eventName,
-      event_type: 'track',
+      eventName: eventName,
+      eventType: 'track',
       timestamp: new Date().toISOString(),
-      session_id: this.sessionId!,
-      user_id: this.userId || undefined,
-      anonymous_id: this.anonymousId || undefined,
+      sessionId: this.sessionId!,
+      userId: this.userId || undefined,
+      anonymousId: this.anonymousId || undefined,
       properties: {
         ...properties,
         ...this.getContextData(),
       },
-      page_url: window.location.href,
-      page_title: document.title,
+      pageUrl: window.location.href,
+      pageTitle: document.title,
     };
 
     this.transport?.sendEvent(eventData);
@@ -207,6 +215,28 @@ class DevSkinSDK {
    * Track a page view
    */
   trackPageView(properties?: Record<string, any>): void {
+    if (!this.initialized) {
+      console.warn('[DevSkin] SDK not initialized. Call init() first.');
+      return;
+    }
+
+    // Generate unique page view ID
+    const pageViewId = this.generateId();
+
+    // Send to RUM page-views endpoint
+    this.transport?.sendPageView({
+      sessionId: this.sessionId!,
+      pageViewId: pageViewId,
+      url: window.location.href,
+      path: window.location.pathname,
+      queryParams: window.location.search,
+      referrer: document.referrer,
+      title: document.title,
+      timestamp: new Date().toISOString(),
+      ...properties,
+    });
+
+    // Also track as analytics event for backwards compatibility
     this.track('page_view', {
       path: window.location.pathname,
       search: window.location.search,
@@ -214,6 +244,14 @@ class DevSkinSDK {
       referrer: document.referrer,
       ...properties,
     });
+
+    if (this.config?.debug) {
+      console.log('[DevSkin] Page view tracked:', {
+        sessionId: this.sessionId,
+        pageViewId: pageViewId,
+        url: window.location.href,
+      });
+    }
   }
 
   /**
@@ -228,13 +266,13 @@ class DevSkinSDK {
     this.userId = userId;
 
     const userData: UserData = {
-      user_id: userId,
-      anonymous_id: this.anonymousId || undefined,
+      userId: userId,
+      anonymousId: this.anonymousId || undefined,
       traits: {
         ...traits,
         ...this.getContextData(),
       },
-      session_id: this.sessionId!,
+      sessionId: this.sessionId!,
       timestamp: new Date().toISOString(),
     };
 
@@ -300,34 +338,86 @@ class DevSkinSDK {
   /**
    * Private methods
    */
-  private startSession(): void {
+  private async startSession(): Promise<void> {
+    // Check if there's an active session (stored in sessionStorage to persist across page navigations)
+    const existingSessionId = sessionStorage.getItem('devskin_session_id');
+    const existingSessionStart = sessionStorage.getItem('devskin_session_start');
+
+    if (existingSessionId && existingSessionStart) {
+      // Resume existing session
+      this.sessionId = existingSessionId;
+      this.sessionStartTime = parseInt(existingSessionStart, 10);
+
+      // Set sessionId in transport so it can be added to network/performance requests
+      this.transport?.setSessionId(this.sessionId);
+
+      if (this.config?.debug) {
+        console.log('[DevSkin] Resuming existing session:', this.sessionId);
+      }
+
+      // Send page view but DON'T create a new session
+      // The session is already created, just continue it
+      return;
+    }
+
+    // Create new session
     this.sessionId = this.generateId();
     this.sessionStartTime = Date.now();
 
+    // Store in sessionStorage (persists across page navigations in same tab)
+    sessionStorage.setItem('devskin_session_id', this.sessionId);
+    sessionStorage.setItem('devskin_session_start', this.sessionStartTime.toString());
+
+    // Set sessionId in transport so it can be added to network/performance requests
+    this.transport?.setSessionId(this.sessionId);
+
     const sessionData = {
-      session_id: this.sessionId,
-      user_id: this.userId || undefined,
-      anonymous_id: this.anonymousId!,
-      started_at: new Date().toISOString(),
+      sessionId: this.sessionId,
+      userId: this.userId || undefined,
+      anonymousId: this.anonymousId!,
+      startedAt: new Date().toISOString(),
+      platform: 'web',
       ...this.getContextData(),
     };
 
-    this.transport?.startSession(sessionData);
+    // CRITICAL: Await session creation to ensure it exists before sending metrics/requests
+    await this.transport?.startSession(sessionData);
+
+    if (this.config?.debug) {
+      console.log('[DevSkin] New session created:', this.sessionId);
+    }
   }
 
   private getContextData(): Record<string, any> {
     const context: Record<string, any> = {};
 
+    // Flatten device data to match backend schema
     if (this.deviceCollector) {
-      context.device = this.deviceCollector.collect();
+      const device = this.deviceCollector.collect();
+      context.deviceType = device.type;
+      context.deviceModel = device.model;
+      context.osName = device.os?.name;
+      context.osVersion = device.os?.version;
+      context.screenWidth = device.screen?.width;
+      context.screenHeight = device.screen?.height;
+      context.viewportWidth = window.innerWidth;
+      context.viewportHeight = window.innerHeight;
     }
 
+    // Flatten browser data to match backend schema
     if (this.browserCollector) {
-      context.browser = this.browserCollector.collect();
+      const browser = this.browserCollector.collect();
+      context.browserName = browser.name;
+      context.browserVersion = browser.version;
+      context.userAgent = browser.userAgent;
     }
 
+    // Flatten location data to match backend schema
     if (this.locationCollector) {
-      context.location = this.locationCollector.collect();
+      const location = this.locationCollector.collect();
+      context.country = location.country;
+      context.city = location.city;
+      context.ipAddress = undefined; // Will be set by backend from request
     }
 
     return context;
@@ -357,27 +447,80 @@ class DevSkinSDK {
   }
 
   private setupUnloadTracking(): void {
-    window.addEventListener('beforeunload', () => {
-      this.track('page_unload');
+    // CRITICAL: Flush data BEFORE page unloads to avoid losing final events
+    // IMPORTANT: NEVER clear sessionStorage - it expires naturally when tab closes
 
-      // Send session end update with duration AND context data
-      if (this.sessionId && this.sessionStartTime) {
-        const endedAt = new Date();
-        const durationMs = Date.now() - this.sessionStartTime;
-
-        this.transport?.startSession({
-          session_id: this.sessionId,
-          user_id: this.userId || undefined,
-          anonymous_id: this.anonymousId!,
-          ended_at: endedAt.toISOString(),
-          duration_ms: durationMs,
-          ...this.getContextData(), // Include device/browser/location
-        });
+    // 1. visibilitychange - fires when tab is hidden (most reliable)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        // User switched tabs or minimized - update duration and flush
+        this.updateSessionDuration();
+        this.rrwebRecorder?.stop(); // Stop recording and flush
+        this.transport?.flush(true); // Use beacon
       }
+    });
 
-      // Send any pending data
+    // 2. pagehide - fires when page is being unloaded
+    window.addEventListener('pagehide', () => {
+      // Track navigation (we can't distinguish between page navigation and tab close reliably)
+      this.track('page_navigation');
+
+      // Update duration but DON'T mark as ending (let heartbeat timeout handle session expiry)
+      this.updateSessionDuration(false);
+
+      // NEVER clear sessionStorage - it persists across navigations in same tab
+      // and expires automatically when tab actually closes
+
+      // Flush data before page unloads
+      this.rrwebRecorder?.stop(); // Stop recording and flush remaining events
       this.transport?.flush(true); // Use beacon for reliability
     });
+
+    // 3. beforeunload - backup for older browsers
+    window.addEventListener('beforeunload', () => {
+      // Update duration but DON'T mark as ending
+      this.updateSessionDuration(false);
+      this.rrwebRecorder?.stop();
+      this.transport?.flush(true);
+    });
+  }
+
+  /**
+   * Start heartbeat to update session duration periodically
+   */
+  private startHeartbeat(): void {
+    // Update duration every 30 seconds
+    this.heartbeatInterval = setInterval(() => {
+      this.updateSessionDuration();
+    }, 30000); // 30 seconds
+  }
+
+  /**
+   * Update session duration
+   */
+  private updateSessionDuration(isEnding = false): void {
+    if (!this.sessionId || !this.sessionStartTime) return;
+
+    const durationMs = Date.now() - this.sessionStartTime;
+    const payload: any = {
+      sessionId: this.sessionId,
+      userId: this.userId || undefined,
+      anonymousId: this.anonymousId!,
+      durationMs: durationMs,
+      platform: 'web',
+      ...this.getContextData(),
+    };
+
+    if (isEnding) {
+      payload.endedAt = new Date().toISOString();
+    }
+
+    // Use beacon if ending, otherwise regular request
+    this.transport?.startSession(payload, isEnding);
+
+    if (this.config?.debug) {
+      console.log('[DevSkin] Session duration updated:', durationMs, 'ms', isEnding ? '(ending)' : '');
+    }
   }
 }
 

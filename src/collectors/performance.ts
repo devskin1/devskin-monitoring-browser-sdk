@@ -38,12 +38,12 @@ export class PerformanceCollector {
       console.log(`[DevSkin] Web Vital ${metric.name}:`, metric.value);
     }
 
-    // Send metric to backend
+    // Send metric to backend - match backend schema
     this.transport.sendPerformanceMetric({
-      name: metric.name,
+      metricName: metric.name,  // Changed from 'name' to 'metricName'
       value: metric.value,
       rating: metric.rating,
-      delta: metric.delta,
+      url: window.location.href,
       timestamp: new Date().toISOString(),
     });
   }
@@ -71,19 +71,9 @@ export class PerformanceCollector {
         }
 
         this.transport.sendPerformanceMetric({
-          name: 'Navigation',
+          metricName: 'Navigation',
           value: windowLoad,
-          details: {
-            domLoad,
-            windowLoad,
-            navigationType: navigation.type,
-            redirectCount: navigation.redirectCount,
-            dns: timing.domainLookupEnd - timing.domainLookupStart,
-            tcp: timing.connectEnd - timing.connectStart,
-            request: timing.responseStart - timing.requestStart,
-            response: timing.responseEnd - timing.responseStart,
-            dom: timing.domComplete - timing.domLoading,
-          },
+          url: window.location.href,
           timestamp: new Date().toISOString(),
         });
       }, 0);
@@ -123,9 +113,9 @@ export class PerformanceCollector {
         }
 
         this.transport.sendPerformanceMetric({
-          name: 'Resources',
+          metricName: 'Resources',
           value: resources.length,
-          details: resourceStats,
+          url: window.location.href,
           timestamp: new Date().toISOString(),
         });
       }, 1000);
@@ -144,13 +134,9 @@ export class PerformanceCollector {
             }
 
             this.transport.sendPerformanceMetric({
-              name: 'LongTask',
+              metricName: 'LongTask',
               value: entry.duration,
-              details: {
-                name: entry.name,
-                entryType: entry.entryType,
-                startTime: entry.startTime,
-              },
+              url: window.location.href,
               timestamp: new Date().toISOString(),
             });
           }

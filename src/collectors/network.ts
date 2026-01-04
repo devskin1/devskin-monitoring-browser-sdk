@@ -50,27 +50,20 @@ export class NetworkCollector {
         const networkRequest: NetworkRequest = {
           url,
           method,
-          status: response.status,
-          duration,
-          size: await this.getResponseSize(clonedResponse),
-          type: 'fetch',
+          statusCode: response.status,
+          durationMs: duration,
+          responseSize: await this.getResponseSize(clonedResponse),
           timestamp: new Date().toISOString(),
-          failed: !response.ok,
         };
 
         // Capture headers if enabled
         if (this.config.networkRequestOptions?.captureHeaders) {
-          networkRequest.headers = this.headersToObject(response.headers);
+          networkRequest.responseHeaders = this.headersToObject(response.headers);
         }
 
-        // Capture body if enabled (only for failed requests to avoid performance issues)
-        if (this.config.networkRequestOptions?.captureBody && !response.ok) {
-          try {
-            const text = await clonedResponse.text();
-            networkRequest.body = text.substring(0, 10000); // Limit to 10KB
-          } catch (error) {
-            // Body might not be readable
-          }
+        // Capture error message for failed requests
+        if (!response.ok) {
+          networkRequest.errorMessage = `HTTP ${response.status} ${response.statusText}`;
         }
 
         if (this.config.debug) {
@@ -87,10 +80,9 @@ export class NetworkCollector {
           const networkRequest: NetworkRequest = {
             url,
             method,
-            duration,
-            type: 'fetch',
+            durationMs: duration,
             timestamp: new Date().toISOString(),
-            failed: true,
+            errorMessage: error instanceof Error ? error.message : 'Network request failed',
           };
 
           if (this.config.debug) {
@@ -166,30 +158,21 @@ export class NetworkCollector {
         const networkRequest: NetworkRequest = {
           url: devskin.url,
           method: devskin.method,
-          status: xhr.status,
-          duration,
-          type: 'xhr',
+          statusCode: xhr.status,
+          durationMs: duration,
           timestamp: new Date().toISOString(),
-          failed: xhr.status === 0 || xhr.status >= 400,
         };
 
         // Capture headers if enabled
         if (collector?.config.networkRequestOptions?.captureHeaders) {
-          networkRequest.headers = collector.parseResponseHeaders(
+          networkRequest.responseHeaders = collector.parseResponseHeaders(
             xhr.getAllResponseHeaders()
           );
         }
 
-        // Capture body if enabled (only for failed requests)
-        if (
-          collector?.config.networkRequestOptions?.captureBody &&
-          networkRequest.failed
-        ) {
-          try {
-            networkRequest.body = xhr.responseText?.substring(0, 10000);
-          } catch (error) {
-            // Response might not be readable
-          }
+        // Capture error message for failed requests
+        if (xhr.status === 0 || xhr.status >= 400) {
+          networkRequest.errorMessage = `HTTP ${xhr.status} ${xhr.statusText}`;
         }
 
         if (collector?.config.debug) {
@@ -206,10 +189,9 @@ export class NetworkCollector {
           const networkRequest: NetworkRequest = {
             url: devskin.url,
             method: devskin.method,
-            duration,
-            type: 'xhr',
+            durationMs: duration,
             timestamp: new Date().toISOString(),
-            failed: true,
+            errorMessage: 'XHR request failed',
           };
 
           if (collector?.config.debug) {
