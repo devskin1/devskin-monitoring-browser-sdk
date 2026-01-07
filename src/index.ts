@@ -107,7 +107,12 @@ class DevSkinSDK {
       };
 
       this.config!.heatmapOptions = heatmapConfig;
-      this.heatmapCollector = new HeatmapCollector(this.config!, this.transport!);
+      this.heatmapCollector = new HeatmapCollector(
+        this.config!,
+        this.transport!,
+        this.anonymousId!,
+        this.sessionId!
+      );
       this.heatmapCollector.start();
 
       // Initialize screenshot collector and capture page

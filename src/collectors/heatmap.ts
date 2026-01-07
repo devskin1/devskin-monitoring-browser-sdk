@@ -43,7 +43,9 @@ export class HeatmapCollector {
 
   constructor(
     private config: DevSkinConfig,
-    private transport: Transport
+    private transport: Transport,
+    private anonymousId: string,
+    private sessionId: string
   ) {}
 
   start(): void {
@@ -219,6 +221,8 @@ export class HeatmapCollector {
       this.clickData.forEach(click => {
         this.transport.sendHeatmapData({
           type: 'click',
+          anonymousId: this.anonymousId,
+          sessionId: this.sessionId,
           ...click,
         });
       });
@@ -230,6 +234,8 @@ export class HeatmapCollector {
       this.scrollData.forEach(scroll => {
         this.transport.sendHeatmapData({
           type: 'scroll',
+          anonymousId: this.anonymousId,
+          sessionId: this.sessionId,
           ...scroll,
         });
       });
@@ -241,6 +247,8 @@ export class HeatmapCollector {
       this.mouseMoveData.forEach(move => {
         this.transport.sendHeatmapData({
           type: 'mousemove',
+          anonymousId: this.anonymousId,
+          sessionId: this.sessionId,
           ...move,
         });
       });

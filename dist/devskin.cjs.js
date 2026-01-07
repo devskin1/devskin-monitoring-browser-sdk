@@ -861,9 +861,11 @@ class NetworkCollector {
 }
 
 class HeatmapCollector {
-    constructor(config, transport) {
+    constructor(config, transport, anonymousId, sessionId) {
         this.config = config;
         this.transport = transport;
+        this.anonymousId = anonymousId;
+        this.sessionId = sessionId;
         this.clickData = [];
         this.scrollData = [];
         this.mouseMoveData = [];
@@ -1007,21 +1009,21 @@ class HeatmapCollector {
         // Send clicks individually (backend expects one click event per item)
         if (this.clickData.length > 0) {
             this.clickData.forEach(click => {
-                this.transport.sendHeatmapData(Object.assign({ type: 'click' }, click));
+                this.transport.sendHeatmapData(Object.assign({ type: 'click', anonymousId: this.anonymousId, sessionId: this.sessionId }, click));
             });
             this.clickData = [];
         }
         // Send scroll data individually
         if (this.scrollData.length > 0) {
             this.scrollData.forEach(scroll => {
-                this.transport.sendHeatmapData(Object.assign({ type: 'scroll' }, scroll));
+                this.transport.sendHeatmapData(Object.assign({ type: 'scroll', anonymousId: this.anonymousId, sessionId: this.sessionId }, scroll));
             });
             this.scrollData = [];
         }
         // Send mouse moves individually
         if (this.mouseMoveData.length > 0) {
             this.mouseMoveData.forEach(move => {
-                this.transport.sendHeatmapData(Object.assign({ type: 'mousemove' }, move));
+                this.transport.sendHeatmapData(Object.assign({ type: 'mousemove', anonymousId: this.anonymousId, sessionId: this.sessionId }, move));
             });
             this.mouseMoveData = [];
         }
@@ -13935,7 +13937,7 @@ class DevSkinSDK {
             // Merge default heatmap config with user config
             const heatmapConfig = Object.assign({ enabled: true, trackClicks: true, trackScroll: true, trackMouseMovement: true, mouseMoveSampling: 0.1 }, this.config.heatmapOptions);
             this.config.heatmapOptions = heatmapConfig;
-            this.heatmapCollector = new HeatmapCollector(this.config, this.transport);
+            this.heatmapCollector = new HeatmapCollector(this.config, this.transport, this.anonymousId, this.sessionId);
             this.heatmapCollector.start();
             // Initialize screenshot collector and capture page
             this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
