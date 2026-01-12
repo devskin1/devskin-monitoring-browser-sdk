@@ -7,6 +7,7 @@ declare class DevSkinSDK {
     private anonymousId;
     private sessionStartTime;
     private initialized;
+    private initializing;
     private heartbeatInterval;
     private deviceCollector;
     private locationCollector;
@@ -19,10 +20,12 @@ declare class DevSkinSDK {
     private rrwebRecorder;
     /**
      * Initialize the DevSkin SDK
+     * Uses requestIdleCallback to defer heavy initialization without blocking the page
      */
     init(config: DevSkinConfig): void;
     /**
      * Track a custom event
+     * Works immediately after init() even if heavy collectors are still loading
      */
     track(eventName: string, properties?: Record<string, any>): void;
     /**
@@ -31,6 +34,7 @@ declare class DevSkinSDK {
     trackPageView(properties?: Record<string, any>): void;
     /**
      * Identify a user
+     * Works immediately after init() even if heavy collectors are still loading
      */
     identify(userId: string, traits?: Record<string, any>): void;
     /**

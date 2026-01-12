@@ -13874,6 +13874,7 @@ class DevSkinSDK {
         this.anonymousId = null;
         this.sessionStartTime = 0;
         this.initialized = false;
+        this.initializing = false;
         this.heartbeatInterval = null;
         // Collectors
         this.deviceCollector = null;
@@ -13889,12 +13890,15 @@ class DevSkinSDK {
     }
     /**
      * Initialize the DevSkin SDK
+     * Uses requestIdleCallback to defer heavy initialization without blocking the page
      */
     init(config) {
-        if (this.initialized) {
-            console.warn('[DevSkin] SDK already initialized');
+        if (this.initialized || this.initializing) {
+            console.warn('[DevSkin] SDK already initialized or initializing');
             return;
         }
+        // Mark as initializing to prevent duplicate init() calls
+        this.initializing = true;
         this.config = Object.assign({ debug: false, captureWebVitals: true, captureNetworkRequests: true, captureErrors: true, captureUserAgent: true, captureLocation: true, captureDevice: true, heatmapOptions: {
                 enabled: true,
                 trackClicks: true,
@@ -13904,99 +13908,118 @@ class DevSkinSDK {
         if (this.config.debug) {
             console.log('[DevSkin] Initializing SDK with config:', this.config);
         }
-        // Initialize transport
+        // Initialize lightweight components immediately (needed for session context)
         this.transport = new Transport(this.config);
-        // Generate anonymous ID if not exists
         this.anonymousId = this.getOrCreateAnonymousId();
-        // Initialize collectors BEFORE starting session (so getContextData works)
         this.deviceCollector = new DeviceCollector(this.config);
         this.locationCollector = new LocationCollector(this.config);
         this.browserCollector = new BrowserCollector(this.config);
-        // Start session (will now include device/browser/location data)
-        // Wait for session creation to complete before starting collectors
-        this.startSession().then(() => {
-            // Session created, now safe to start collectors that send data
-            var _a, _b;
-            if (this.config.captureWebVitals) {
-                this.performanceCollector = new PerformanceCollector(this.config, this.transport);
-                this.performanceCollector.start();
-            }
-            if (this.config.captureErrors) {
-                this.errorCollector = new ErrorCollector(this.config, this.transport);
-                this.errorCollector.start();
-            }
-            if (this.config.captureNetworkRequests) {
-                this.networkCollector = new NetworkCollector(this.config, this.transport);
-                this.networkCollector.start();
-            }
-            // Initialize heatmap collector - SEMPRE habilitado
-            // Merge default heatmap config with user config
-            const heatmapConfig = Object.assign({ enabled: true, trackClicks: true, trackScroll: true, trackMouseMovement: true, mouseMoveSampling: 0.1 }, this.config.heatmapOptions);
-            this.config.heatmapOptions = heatmapConfig;
-            this.heatmapCollector = new HeatmapCollector(this.config, this.transport, this.anonymousId, this.sessionId);
-            this.heatmapCollector.start();
-            // Initialize screenshot collector and capture page
-            this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
-            this.screenshotCollector.captureAndSend(this.sessionId, window.location.href);
-            if (this.config.debug) {
-                console.log('[DevSkin] Heatmap collection enabled (always on)');
-            }
-            // Initialize session recording with rrweb
-            if ((_a = this.config.sessionRecording) === null || _a === void 0 ? void 0 : _a.enabled) {
-                // Use RRWebRecorder for complete DOM recording
-                // Pass sessionStartTime to ensure timestamp continuity across page navigations
-                this.rrwebRecorder = new RRWebRecorder(this.sessionId, {
-                    enabled: true,
-                    sampleRate: this.config.sessionRecording.sampling || 0.5,
-                    blockClass: 'rr-block',
-                    ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
-                    maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
-                        ? this.config.sessionRecording.maskAllInputs
-                        : true,
-                    maskInputOptions: {
-                        password: true,
-                        email: true,
-                        tel: true,
-                    },
-                    recordCanvas: this.config.sessionRecording.recordCanvas || false,
-                    collectFonts: true,
-                    inlineStylesheet: true,
-                    checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
-                    checkoutEveryNth: 200, // Every 200 events
-                }, (events) => {
-                    var _a;
-                    // Send rrweb events to backend
-                    (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendRecordingEvents(this.sessionId, events);
-                }, this.sessionStartTime // Pass session start time for timestamp continuity
-                );
-                // Start recording immediately (session already created)
-                this.rrwebRecorder.start();
-                if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
-                    console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
+        // Defer heavy initialization to avoid blocking page load/rendering
+        const initHeavyCollectors = () => {
+            // Start session (will now include device/browser/location data)
+            // Wait for session creation to complete before starting collectors
+            this.startSession().then(() => {
+                // Session created, now safe to start collectors that send data
+                var _a, _b;
+                if (this.config.captureWebVitals) {
+                    this.performanceCollector = new PerformanceCollector(this.config, this.transport);
+                    this.performanceCollector.start();
                 }
+                if (this.config.captureErrors) {
+                    this.errorCollector = new ErrorCollector(this.config, this.transport);
+                    this.errorCollector.start();
+                }
+                if (this.config.captureNetworkRequests) {
+                    this.networkCollector = new NetworkCollector(this.config, this.transport);
+                    this.networkCollector.start();
+                }
+                // Initialize heatmap collector - SEMPRE habilitado
+                // Merge default heatmap config with user config
+                const heatmapConfig = Object.assign({ enabled: true, trackClicks: true, trackScroll: true, trackMouseMovement: true, mouseMoveSampling: 0.1 }, this.config.heatmapOptions);
+                this.config.heatmapOptions = heatmapConfig;
+                this.heatmapCollector = new HeatmapCollector(this.config, this.transport, this.anonymousId, this.sessionId);
+                this.heatmapCollector.start();
+                // Initialize screenshot collector and capture page
+                this.screenshotCollector = new ScreenshotCollector(this.config, this.transport);
+                this.screenshotCollector.captureAndSend(this.sessionId, window.location.href);
+                if (this.config.debug) {
+                    console.log('[DevSkin] Heatmap collection enabled (always on)');
+                }
+                // Initialize session recording with rrweb
+                if ((_a = this.config.sessionRecording) === null || _a === void 0 ? void 0 : _a.enabled) {
+                    // Use RRWebRecorder for complete DOM recording
+                    // Pass sessionStartTime to ensure timestamp continuity across page navigations
+                    this.rrwebRecorder = new RRWebRecorder(this.sessionId, {
+                        enabled: true,
+                        sampleRate: this.config.sessionRecording.sampling || 0.5,
+                        blockClass: 'rr-block',
+                        ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
+                        maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
+                            ? this.config.sessionRecording.maskAllInputs
+                            : true,
+                        maskInputOptions: {
+                            password: true,
+                            email: true,
+                            tel: true,
+                        },
+                        recordCanvas: this.config.sessionRecording.recordCanvas || false,
+                        collectFonts: true,
+                        inlineStylesheet: true,
+                        checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
+                        checkoutEveryNth: 200, // Every 200 events
+                    }, (events) => {
+                        var _a;
+                        // Send rrweb events to backend
+                        (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendRecordingEvents(this.sessionId, events);
+                    }, this.sessionStartTime // Pass session start time for timestamp continuity
+                    );
+                    // Start recording immediately (session already created)
+                    this.rrwebRecorder.start();
+                    if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+                        console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
+                    }
+                }
+                // Track initial page view
+                this.trackPageView();
+                // Start heartbeat to update session duration every 30 seconds
+                this.startHeartbeat();
+            }).catch((err) => {
+                console.error('[DevSkin] Failed to create session:', err);
+            });
+            // Track page visibility changes
+            this.setupVisibilityTracking();
+            // Track page unload
+            this.setupUnloadTracking();
+            // Mark as fully initialized only after everything is loaded
+            this.initialized = true;
+            this.initializing = false;
+        };
+        // Use requestIdleCallback to defer heavy initialization (non-blocking)
+        // Falls back to setTimeout for browsers that don't support it
+        if (typeof window !== 'undefined') {
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(initHeavyCollectors, { timeout: 2000 });
             }
-            // Track initial page view
-            this.trackPageView();
-            // Start heartbeat to update session duration every 30 seconds
-            this.startHeartbeat();
-        }).catch((err) => {
-            console.error('[DevSkin] Failed to create session:', err);
-        });
-        // Track page visibility changes
-        this.setupVisibilityTracking();
-        // Track page unload
-        this.setupUnloadTracking();
-        this.initialized = true;
+            else {
+                // Fallback for older browsers
+                setTimeout(initHeavyCollectors, 1);
+            }
+        }
+        else {
+            // Node.js environment (SSR)
+            initHeavyCollectors();
+        }
         if (this.config.debug) {
-            console.log('[DevSkin] SDK initialized successfully');
+            console.log('[DevSkin] SDK initialization started (heavy collectors loading in background)');
         }
     }
     /**
      * Track a custom event
+     * Works immediately after init() even if heavy collectors are still loading
      */
     track(eventName, properties) {
-        var _a, _b;
-        if (!this.initialized) {
+        var _a, _b, _c, _d;
+        if (!this.transport) {
             console.warn('[DevSkin] SDK not initialized. Call init() first.');
             return;
         }
@@ -14004,15 +14027,15 @@ class DevSkinSDK {
             eventName: eventName,
             eventType: 'track',
             timestamp: new Date().toISOString(),
-            sessionId: this.sessionId,
-            userId: this.userId || undefined,
-            anonymousId: this.anonymousId || undefined,
+            sessionId: (_a = this.sessionId) !== null && _a !== void 0 ? _a : undefined,
+            userId: (_b = this.userId) !== null && _b !== void 0 ? _b : undefined,
+            anonymousId: (_c = this.anonymousId) !== null && _c !== void 0 ? _c : undefined,
             properties: Object.assign(Object.assign({}, properties), this.getContextData()),
             pageUrl: window.location.href,
             pageTitle: document.title,
         };
-        (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendEvent(eventData);
-        if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+        this.transport.sendEvent(eventData);
+        if ((_d = this.config) === null || _d === void 0 ? void 0 : _d.debug) {
             console.log('[DevSkin] Event tracked:', eventData);
         }
     }
@@ -14041,23 +14064,24 @@ class DevSkinSDK {
     }
     /**
      * Identify a user
+     * Works immediately after init() even if heavy collectors are still loading
      */
     identify(userId, traits) {
-        var _a, _b;
-        if (!this.initialized) {
+        var _a, _b, _c;
+        if (!this.transport) {
             console.warn('[DevSkin] SDK not initialized. Call init() first.');
             return;
         }
         this.userId = userId;
         const userData = {
             userId: userId,
-            anonymousId: this.anonymousId || undefined,
+            anonymousId: (_a = this.anonymousId) !== null && _a !== void 0 ? _a : undefined,
             traits: Object.assign(Object.assign({}, traits), this.getContextData()),
-            sessionId: this.sessionId,
+            sessionId: (_b = this.sessionId) !== null && _b !== void 0 ? _b : undefined,
             timestamp: new Date().toISOString(),
         };
-        (_a = this.transport) === null || _a === void 0 ? void 0 : _a.identifyUser(userData);
-        if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+        this.transport.identifyUser(userData);
+        if ((_c = this.config) === null || _c === void 0 ? void 0 : _c.debug) {
             console.log('[DevSkin] User identified:', userData);
         }
     }

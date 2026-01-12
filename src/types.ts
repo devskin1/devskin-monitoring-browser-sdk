@@ -68,7 +68,7 @@ export interface EventData {
   eventName: string;
   eventType: string;
   timestamp: string;
-  sessionId: string;
+  sessionId?: string; // Optional - may not be available immediately after init()
   userId?: string;
   anonymousId?: string;
   properties?: Record<string, any>;
@@ -80,7 +80,7 @@ export interface UserData {
   userId: string;
   anonymousId?: string;
   traits?: Record<string, any>;
-  sessionId: string;
+  sessionId?: string; // Optional - may not be available immediately after init()
   timestamp: string;
 }
 

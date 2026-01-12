@@ -51,7 +51,7 @@ export interface EventData {
     eventName: string;
     eventType: string;
     timestamp: string;
-    sessionId: string;
+    sessionId?: string;
     userId?: string;
     anonymousId?: string;
     properties?: Record<string, any>;
@@ -62,7 +62,7 @@ export interface UserData {
     userId: string;
     anonymousId?: string;
     traits?: Record<string, any>;
-    sessionId: string;
+    sessionId?: string;
     timestamp: string;
 }
 export interface SessionData {

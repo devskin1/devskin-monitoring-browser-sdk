@@ -20,6 +20,7 @@ class DevSkinSDK {
   private anonymousId: string | null = null;
   private sessionStartTime: number = 0;
   private initialized = false;
+  private initializing = false;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
   // Collectors
@@ -36,12 +37,16 @@ class DevSkinSDK {
 
   /**
    * Initialize the DevSkin SDK
+   * Uses requestIdleCallback to defer heavy initialization without blocking the page
    */
   init(config: DevSkinConfig): void {
-    if (this.initialized) {
-      console.warn('[DevSkin] SDK already initialized');
+    if (this.initialized || this.initializing) {
+      console.warn('[DevSkin] SDK already initialized or initializing');
       return;
     }
+
+    // Mark as initializing to prevent duplicate init() calls
+    this.initializing = true;
 
     this.config = {
       debug: false,
@@ -64,20 +69,19 @@ class DevSkinSDK {
       console.log('[DevSkin] Initializing SDK with config:', this.config);
     }
 
-    // Initialize transport
+
+    // Initialize lightweight components immediately (needed for session context)
     this.transport = new Transport(this.config);
-
-    // Generate anonymous ID if not exists
     this.anonymousId = this.getOrCreateAnonymousId();
-
-    // Initialize collectors BEFORE starting session (so getContextData works)
     this.deviceCollector = new DeviceCollector(this.config);
     this.locationCollector = new LocationCollector(this.config);
     this.browserCollector = new BrowserCollector(this.config);
 
-    // Start session (will now include device/browser/location data)
-    // Wait for session creation to complete before starting collectors
-    this.startSession().then(() => {
+    // Defer heavy initialization to avoid blocking page load/rendering
+    const initHeavyCollectors = () => {
+      // Start session (will now include device/browser/location data)
+      // Wait for session creation to complete before starting collectors
+      this.startSession().then(() => {
       // Session created, now safe to start collectors that send data
 
       if (this.config!.captureWebVitals) {
@@ -163,33 +167,51 @@ class DevSkinSDK {
         }
       }
 
-      // Track initial page view
-      this.trackPageView();
+        // Track initial page view
+        this.trackPageView();
 
-      // Start heartbeat to update session duration every 30 seconds
-      this.startHeartbeat();
-    }).catch((err) => {
-      console.error('[DevSkin] Failed to create session:', err);
-    });
+        // Start heartbeat to update session duration every 30 seconds
+        this.startHeartbeat();
+      }).catch((err) => {
+        console.error('[DevSkin] Failed to create session:', err);
+      });
 
-    // Track page visibility changes
-    this.setupVisibilityTracking();
+      // Track page visibility changes
+      this.setupVisibilityTracking();
 
-    // Track page unload
-    this.setupUnloadTracking();
+      // Track page unload
+      this.setupUnloadTracking();
 
-    this.initialized = true;
+      // Mark as fully initialized only after everything is loaded
+      this.initialized = true;
+      this.initializing = false;
+    };
+
+    // Use requestIdleCallback to defer heavy initialization (non-blocking)
+    // Falls back to setTimeout for browsers that don't support it
+    if (typeof window !== 'undefined') {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(initHeavyCollectors, { timeout: 2000 });
+      } else {
+        // Fallback for older browsers
+        setTimeout(initHeavyCollectors, 1);
+      }
+    } else {
+      // Node.js environment (SSR)
+      initHeavyCollectors();
+    }
 
     if (this.config.debug) {
-      console.log('[DevSkin] SDK initialized successfully');
+      console.log('[DevSkin] SDK initialization started (heavy collectors loading in background)');
     }
   }
 
   /**
    * Track a custom event
+   * Works immediately after init() even if heavy collectors are still loading
    */
   track(eventName: string, properties?: Record<string, any>): void {
-    if (!this.initialized) {
+    if (!this.transport) {
       console.warn('[DevSkin] SDK not initialized. Call init() first.');
       return;
     }
@@ -198,9 +220,9 @@ class DevSkinSDK {
       eventName: eventName,
       eventType: 'track',
       timestamp: new Date().toISOString(),
-      sessionId: this.sessionId!,
-      userId: this.userId || undefined,
-      anonymousId: this.anonymousId || undefined,
+      sessionId: this.sessionId ?? undefined,
+      userId: this.userId ?? undefined,
+      anonymousId: this.anonymousId ?? undefined,
       properties: {
         ...properties,
         ...this.getContextData(),
@@ -209,7 +231,7 @@ class DevSkinSDK {
       pageTitle: document.title,
     };
 
-    this.transport?.sendEvent(eventData);
+    this.transport.sendEvent(eventData);
 
     if (this.config?.debug) {
       console.log('[DevSkin] Event tracked:', eventData);
@@ -261,9 +283,10 @@ class DevSkinSDK {
 
   /**
    * Identify a user
+   * Works immediately after init() even if heavy collectors are still loading
    */
   identify(userId: string, traits?: Record<string, any>): void {
-    if (!this.initialized) {
+    if (!this.transport) {
       console.warn('[DevSkin] SDK not initialized. Call init() first.');
       return;
     }
@@ -272,16 +295,16 @@ class DevSkinSDK {
 
     const userData: UserData = {
       userId: userId,
-      anonymousId: this.anonymousId || undefined,
+      anonymousId: this.anonymousId ?? undefined,
       traits: {
         ...traits,
         ...this.getContextData(),
       },
-      sessionId: this.sessionId!,
+      sessionId: this.sessionId ?? undefined,
       timestamp: new Date().toISOString(),
     };
 
-    this.transport?.identifyUser(userData);
+    this.transport.identifyUser(userData);
 
     if (this.config?.debug) {
       console.log('[DevSkin] User identified:', userData);
