@@ -1,7 +1,7 @@
 import type { eventWithTime } from '@rrweb/types';
 export interface RRWebRecorderConfig {
     enabled: boolean;
-    sampleRate?: number;
+    mouseMoveSampleRate?: number;
     checkoutEveryNms?: number;
     checkoutEveryNth?: number;
     blockClass?: string;

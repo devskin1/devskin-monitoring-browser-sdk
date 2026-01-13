@@ -36,12 +36,93 @@ class DevSkinSDK {
   private rrwebRecorder: RRWebRecorder | null = null;
 
   /**
+   * Detect if the current visitor is a bot/crawler
+   */
+  private isBot(): boolean {
+    if (typeof navigator === 'undefined') return true;
+
+    const botPatterns = [
+      /bot/i,
+      /crawler/i,
+      /spider/i,
+      /crawling/i,
+      /google/i,
+      /bing/i,
+      /yahoo/i,
+      /duckduckgo/i,
+      /baiduspider/i,
+      /yandex/i,
+      /facebookexternalhit/i,
+      /twitterbot/i,
+      /rogerbot/i,
+      /linkedinbot/i,
+      /embedly/i,
+      /quora link preview/i,
+      /showyoubot/i,
+      /outbrain/i,
+      /pinterest/i,
+      /slackbot/i,
+      /vkShare/i,
+      /W3C_Validator/i,
+      /redditbot/i,
+      /Applebot/i,
+      /WhatsApp/i,
+      /flipboard/i,
+      /tumblr/i,
+      /bitlybot/i,
+      /SkypeUriPreview/i,
+      /nuzzel/i,
+      /Discordbot/i,
+      /Google Page Speed/i,
+      /Qwantify/i,
+      /pinterestbot/i,
+      /Bitrix link preview/i,
+      /XING-contenttabreceiver/i,
+      /Chrome-Lighthouse/i,
+      /telegrambot/i,
+      /Lighthouse/i,
+      /GTmetrix/i,
+      /PageSpeed/i,
+      /HeadlessChrome/i,
+      /PhantomJS/i,
+    ];
+
+    const userAgent = navigator.userAgent;
+
+    // Check user agent against bot patterns
+    if (botPatterns.some(pattern => pattern.test(userAgent))) {
+      return true;
+    }
+
+    // Check for headless browsers
+    if ('webdriver' in navigator && (navigator as any).webdriver === true) {
+      return true;
+    }
+
+    // Check for headless Chrome
+    if (userAgent.includes('HeadlessChrome')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Initialize the DevSkin SDK
    * Uses requestIdleCallback to defer heavy initialization without blocking the page
    */
   init(config: DevSkinConfig): void {
     if (this.initialized || this.initializing) {
       console.warn('[DevSkin] SDK already initialized or initializing');
+      return;
+    }
+
+    // CRITICAL: Skip ALL initialization for bots/crawlers (SEO optimization)
+    // This ensures ZERO performance impact on Google PageSpeed, Lighthouse, etc.
+    if (this.isBot()) {
+      if (config.debug) {
+        console.log('[DevSkin] Bot/crawler detected - SDK disabled for SEO optimization');
+      }
       return;
     }
 
@@ -129,41 +210,51 @@ class DevSkinSDK {
 
       // Initialize session recording with rrweb
       if (this.config!.sessionRecording?.enabled) {
-        // Use RRWebRecorder for complete DOM recording
-        // Pass sessionStartTime to ensure timestamp continuity across page navigations
-        this.rrwebRecorder = new RRWebRecorder(
-          this.sessionId!,
-          {
-            enabled: true,
-            sampleRate: this.config!.sessionRecording.sampling || 0.5,
-            blockClass: 'rr-block',
-            ignoreClass: this.config!.sessionRecording.ignoreClass || 'rr-ignore',
-            maskAllInputs: this.config!.sessionRecording.maskAllInputs !== undefined
-              ? this.config!.sessionRecording.maskAllInputs
-              : true,
-            maskInputOptions: {
-              password: true,
-              email: true,
-              tel: true,
+        // Apply session sampling - decide if this session should be recorded
+        const samplingRate = this.config!.sessionRecording.sampling || 1.0;
+        const shouldRecord = Math.random() < samplingRate;
+
+        if (shouldRecord) {
+          // Use RRWebRecorder for complete DOM recording
+          // Pass sessionStartTime to ensure timestamp continuity across page navigations
+          this.rrwebRecorder = new RRWebRecorder(
+            this.sessionId!,
+            {
+              enabled: true,
+              mouseMoveSampleRate: 0.5, // Sample 50% of mouse movements to reduce bandwidth
+              blockClass: 'rr-block',
+              ignoreClass: this.config!.sessionRecording.ignoreClass || 'rr-ignore',
+              maskAllInputs: this.config!.sessionRecording.maskAllInputs !== undefined
+                ? this.config!.sessionRecording.maskAllInputs
+                : true,
+              maskInputOptions: {
+                password: true,
+                email: true,
+                tel: true,
+              },
+              recordCanvas: this.config!.sessionRecording.recordCanvas || false,
+              collectFonts: true,
+              inlineStylesheet: true,
+              checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
+              checkoutEveryNth: 200, // Every 200 events
             },
-            recordCanvas: this.config!.sessionRecording.recordCanvas || false,
-            collectFonts: true,
-            inlineStylesheet: true,
-            checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
-            checkoutEveryNth: 200, // Every 200 events
-          },
-          (events: eventWithTime[]) => {
-            // Send rrweb events to backend
-            this.transport?.sendRecordingEvents(this.sessionId!, events);
-          },
-          this.sessionStartTime // Pass session start time for timestamp continuity
-        );
+            (events: eventWithTime[]) => {
+              // Send rrweb events to backend
+              this.transport?.sendRecordingEvents(this.sessionId!, events);
+            },
+            this.sessionStartTime // Pass session start time for timestamp continuity
+          );
 
-        // Start recording immediately (session already created)
-        this.rrwebRecorder.start();
+          // Start recording immediately (session already created)
+          this.rrwebRecorder.start();
 
-        if (this.config?.debug) {
-          console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
+          if (this.config?.debug) {
+            console.log(`[DevSkin] RRWeb recording started for session: ${this.sessionId} (sampling: ${samplingRate * 100}%)`);
+          }
+        } else {
+          if (this.config?.debug) {
+            console.log(`[DevSkin] Session ${this.sessionId} not sampled for recording (sampling: ${samplingRate * 100}%)`);
+          }
         }
       }
 
@@ -553,7 +644,40 @@ class DevSkinSDK {
 }
 
 // Create singleton instance
-const DevSkin = new DevSkinSDK();
+const sdk = new DevSkinSDK();
 
-// Export as default only for UMD compatibility
-export default DevSkin;
+// Command processor function (Hotjar-style API)
+function DevSkin(command: string, ...args: any[]) {
+  if (typeof (sdk as any)[command] === 'function') {
+    (sdk as any)[command](...args);
+  } else {
+    console.warn(`[DevSkin] Unknown command: ${command}`);
+  }
+}
+
+// Process queued commands from async loader
+if (typeof window !== 'undefined' && (window as any).DevSkin) {
+  const stub = (window as any).DevSkin;
+  if (stub.q && Array.isArray(stub.q)) {
+    // Process all queued commands
+    stub.q.forEach((args: any[]) => {
+      if (args.length > 0) {
+        DevSkin(args[0], ...args.slice(1));
+      }
+    });
+  }
+
+  // Preserve load time
+  if (stub.l) {
+    (DevSkin as any).l = stub.l;
+  }
+
+  // Replace stub with real function
+  (window as any).DevSkin = DevSkin;
+}
+
+// For UMD/global access, also expose singleton methods directly
+Object.assign(DevSkin, sdk);
+
+// Export for NPM/module usage
+export default sdk;

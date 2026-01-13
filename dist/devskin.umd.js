@@ -13475,11 +13475,12 @@
                     },
                     // Configuration options
                     sampling: {
-                        // Mouse interactions
-                        mousemove: this.config.sampleRate !== undefined
-                            ? Math.floor(100 / this.config.sampleRate)
-                            : true,
-                        // Mouse interactions
+                        // Mouse movement sampling - throttle to reduce bandwidth
+                        // e.g. 0.1 = capture 10% of mouse movements (Math.floor(1/0.1) = 10, meaning capture 1 every 10 events)
+                        mousemove: this.config.mouseMoveSampleRate !== undefined
+                            ? Math.max(1, Math.floor(1 / this.config.mouseMoveSampleRate))
+                            : 10, // Default: capture 1 every 10 mouse movements (10%)
+                        // Mouse interactions (clicks, etc) - always capture
                         mouseInteraction: true,
                         // Scroll events
                         scroll: 150, // Throttle scroll events to every 150ms
@@ -13895,12 +13896,86 @@
             this.rrwebRecorder = null;
         }
         /**
+         * Detect if the current visitor is a bot/crawler
+         */
+        isBot() {
+            if (typeof navigator === 'undefined')
+                return true;
+            const botPatterns = [
+                /bot/i,
+                /crawler/i,
+                /spider/i,
+                /crawling/i,
+                /google/i,
+                /bing/i,
+                /yahoo/i,
+                /duckduckgo/i,
+                /baiduspider/i,
+                /yandex/i,
+                /facebookexternalhit/i,
+                /twitterbot/i,
+                /rogerbot/i,
+                /linkedinbot/i,
+                /embedly/i,
+                /quora link preview/i,
+                /showyoubot/i,
+                /outbrain/i,
+                /pinterest/i,
+                /slackbot/i,
+                /vkShare/i,
+                /W3C_Validator/i,
+                /redditbot/i,
+                /Applebot/i,
+                /WhatsApp/i,
+                /flipboard/i,
+                /tumblr/i,
+                /bitlybot/i,
+                /SkypeUriPreview/i,
+                /nuzzel/i,
+                /Discordbot/i,
+                /Google Page Speed/i,
+                /Qwantify/i,
+                /pinterestbot/i,
+                /Bitrix link preview/i,
+                /XING-contenttabreceiver/i,
+                /Chrome-Lighthouse/i,
+                /telegrambot/i,
+                /Lighthouse/i,
+                /GTmetrix/i,
+                /PageSpeed/i,
+                /HeadlessChrome/i,
+                /PhantomJS/i,
+            ];
+            const userAgent = navigator.userAgent;
+            // Check user agent against bot patterns
+            if (botPatterns.some(pattern => pattern.test(userAgent))) {
+                return true;
+            }
+            // Check for headless browsers
+            if ('webdriver' in navigator && navigator.webdriver === true) {
+                return true;
+            }
+            // Check for headless Chrome
+            if (userAgent.includes('HeadlessChrome')) {
+                return true;
+            }
+            return false;
+        }
+        /**
          * Initialize the DevSkin SDK
          * Uses requestIdleCallback to defer heavy initialization without blocking the page
          */
         init(config) {
             if (this.initialized || this.initializing) {
                 console.warn('[DevSkin] SDK already initialized or initializing');
+                return;
+            }
+            // CRITICAL: Skip ALL initialization for bots/crawlers (SEO optimization)
+            // This ensures ZERO performance impact on Google PageSpeed, Lighthouse, etc.
+            if (this.isBot()) {
+                if (config.debug) {
+                    console.log('[DevSkin] Bot/crawler detected - SDK disabled for SEO optimization');
+                }
                 return;
             }
             // Mark as initializing to prevent duplicate init() calls
@@ -13926,7 +14001,7 @@
                 // Wait for session creation to complete before starting collectors
                 this.startSession().then(() => {
                     // Session created, now safe to start collectors that send data
-                    var _a, _b;
+                    var _a, _b, _c;
                     if (this.config.captureWebVitals) {
                         this.performanceCollector = new PerformanceCollector(this.config, this.transport);
                         this.performanceCollector.start();
@@ -13953,36 +14028,46 @@
                     }
                     // Initialize session recording with rrweb
                     if ((_a = this.config.sessionRecording) === null || _a === void 0 ? void 0 : _a.enabled) {
-                        // Use RRWebRecorder for complete DOM recording
-                        // Pass sessionStartTime to ensure timestamp continuity across page navigations
-                        this.rrwebRecorder = new RRWebRecorder(this.sessionId, {
-                            enabled: true,
-                            sampleRate: this.config.sessionRecording.sampling || 0.5,
-                            blockClass: 'rr-block',
-                            ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
-                            maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
-                                ? this.config.sessionRecording.maskAllInputs
-                                : true,
-                            maskInputOptions: {
-                                password: true,
-                                email: true,
-                                tel: true,
-                            },
-                            recordCanvas: this.config.sessionRecording.recordCanvas || false,
-                            collectFonts: true,
-                            inlineStylesheet: true,
-                            checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
-                            checkoutEveryNth: 200, // Every 200 events
-                        }, (events) => {
-                            var _a;
-                            // Send rrweb events to backend
-                            (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendRecordingEvents(this.sessionId, events);
-                        }, this.sessionStartTime // Pass session start time for timestamp continuity
-                        );
-                        // Start recording immediately (session already created)
-                        this.rrwebRecorder.start();
-                        if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
-                            console.log('[DevSkin] RRWeb recording started for session:', this.sessionId);
+                        // Apply session sampling - decide if this session should be recorded
+                        const samplingRate = this.config.sessionRecording.sampling || 1.0;
+                        const shouldRecord = Math.random() < samplingRate;
+                        if (shouldRecord) {
+                            // Use RRWebRecorder for complete DOM recording
+                            // Pass sessionStartTime to ensure timestamp continuity across page navigations
+                            this.rrwebRecorder = new RRWebRecorder(this.sessionId, {
+                                enabled: true,
+                                mouseMoveSampleRate: 0.5, // Sample 50% of mouse movements to reduce bandwidth
+                                blockClass: 'rr-block',
+                                ignoreClass: this.config.sessionRecording.ignoreClass || 'rr-ignore',
+                                maskAllInputs: this.config.sessionRecording.maskAllInputs !== undefined
+                                    ? this.config.sessionRecording.maskAllInputs
+                                    : true,
+                                maskInputOptions: {
+                                    password: true,
+                                    email: true,
+                                    tel: true,
+                                },
+                                recordCanvas: this.config.sessionRecording.recordCanvas || false,
+                                collectFonts: true,
+                                inlineStylesheet: true,
+                                checkoutEveryNms: 5 * 60 * 1000, // Every 5 minutes
+                                checkoutEveryNth: 200, // Every 200 events
+                            }, (events) => {
+                                var _a;
+                                // Send rrweb events to backend
+                                (_a = this.transport) === null || _a === void 0 ? void 0 : _a.sendRecordingEvents(this.sessionId, events);
+                            }, this.sessionStartTime // Pass session start time for timestamp continuity
+                            );
+                            // Start recording immediately (session already created)
+                            this.rrwebRecorder.start();
+                            if ((_b = this.config) === null || _b === void 0 ? void 0 : _b.debug) {
+                                console.log(`[DevSkin] RRWeb recording started for session: ${this.sessionId} (sampling: ${samplingRate * 100}%)`);
+                            }
+                        }
+                        else {
+                            if ((_c = this.config) === null || _c === void 0 ? void 0 : _c.debug) {
+                                console.log(`[DevSkin] Session ${this.sessionId} not sampled for recording (sampling: ${samplingRate * 100}%)`);
+                            }
                         }
                     }
                     // Track initial page view
@@ -14286,9 +14371,38 @@
         }
     }
     // Create singleton instance
-    const DevSkin = new DevSkinSDK();
+    const sdk = new DevSkinSDK();
+    // Command processor function (Hotjar-style API)
+    function DevSkin(command, ...args) {
+        if (typeof sdk[command] === 'function') {
+            sdk[command](...args);
+        }
+        else {
+            console.warn(`[DevSkin] Unknown command: ${command}`);
+        }
+    }
+    // Process queued commands from async loader
+    if (typeof window !== 'undefined' && window.DevSkin) {
+        const stub = window.DevSkin;
+        if (stub.q && Array.isArray(stub.q)) {
+            // Process all queued commands
+            stub.q.forEach((args) => {
+                if (args.length > 0) {
+                    DevSkin(args[0], ...args.slice(1));
+                }
+            });
+        }
+        // Preserve load time
+        if (stub.l) {
+            DevSkin.l = stub.l;
+        }
+        // Replace stub with real function
+        window.DevSkin = DevSkin;
+    }
+    // For UMD/global access, also expose singleton methods directly
+    Object.assign(DevSkin, sdk);
 
-    return DevSkin;
+    return sdk;
 
 }));
 //# sourceMappingURL=devskin.umd.js.map

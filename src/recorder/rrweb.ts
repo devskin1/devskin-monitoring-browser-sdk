@@ -4,7 +4,7 @@ import type { listenerHandler } from '@rrweb/types';
 
 export interface RRWebRecorderConfig {
   enabled: boolean;
-  sampleRate?: number; // Sample rate for mouse movements (0-1)
+  mouseMoveSampleRate?: number; // Throttle rate for mouse movements (0-1), e.g. 0.1 = capture 10% of mouse moves
   checkoutEveryNms?: number; // Take full snapshot every N milliseconds
   checkoutEveryNth?: number; // Take full snapshot every N events
   blockClass?: string; // CSS class to block from recording
@@ -78,11 +78,12 @@ export class RRWebRecorder {
         },
         // Configuration options
         sampling: {
-          // Mouse interactions
-          mousemove: this.config.sampleRate !== undefined
-            ? Math.floor(100 / this.config.sampleRate)
-            : true,
-          // Mouse interactions
+          // Mouse movement sampling - throttle to reduce bandwidth
+          // e.g. 0.1 = capture 10% of mouse movements (Math.floor(1/0.1) = 10, meaning capture 1 every 10 events)
+          mousemove: this.config.mouseMoveSampleRate !== undefined
+            ? Math.max(1, Math.floor(1 / this.config.mouseMoveSampleRate))
+            : 10, // Default: capture 1 every 10 mouse movements (10%)
+          // Mouse interactions (clicks, etc) - always capture
           mouseInteraction: true,
           // Scroll events
           scroll: 150, // Throttle scroll events to every 150ms

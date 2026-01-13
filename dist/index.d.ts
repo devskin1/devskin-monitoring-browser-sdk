@@ -19,6 +19,10 @@ declare class DevSkinSDK {
     private screenshotCollector;
     private rrwebRecorder;
     /**
+     * Detect if the current visitor is a bot/crawler
+     */
+    private isBot;
+    /**
      * Initialize the DevSkin SDK
      * Uses requestIdleCallback to defer heavy initialization without blocking the page
      */
@@ -78,6 +82,6 @@ declare class DevSkinSDK {
      */
     private updateSessionDuration;
 }
-declare const DevSkin: DevSkinSDK;
-export default DevSkin;
+declare const sdk: DevSkinSDK;
+export default sdk;
 //# sourceMappingURL=index.d.ts.map
