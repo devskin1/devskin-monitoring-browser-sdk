@@ -262,7 +262,8 @@ export class Transport {
 
       xhr.open('POST', url, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Authorization', `Bearer ${this.config.apiKey}`);
+      xhr.setRequestHeader('X-API-Key', this.config.apiKey);
+      xhr.setRequestHeader('X-App-Id', this.config.appId);
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -338,7 +339,8 @@ export class Transport {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
+          'X-API-Key': this.config.apiKey,
+          'X-App-Id': this.config.appId,
         },
         body: JSON.stringify(payload),
         // Use keepalive for better reliability during page unload
