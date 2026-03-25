@@ -81,38 +81,22 @@ export class Transport {
   }
 
   async sendRecordingEvents(sessionId: string, events: eventWithTime[]): Promise<void> {
-    // Calculate payload size
-    const payload = {
-      session_id: sessionId,
-      events,
-      timestamp: new Date().toISOString(),
-      apiKey: this.config.apiKey,
-      appId: this.config.appId,
-    };
-    const payloadSize = new Blob([JSON.stringify(payload)]).size;
-
     // Check if this batch contains FullSnapshot (type 2)
     const hasFullSnapshot = events.some(e => e.type === 2);
-    const maxRetries = hasFullSnapshot ? 3 : 1; // Retry FullSnapshot batches up to 3 times
+    const maxRetries = hasFullSnapshot ? 3 : 1;
 
-    // Recording events can be large, send immediately with retry logic
+    // ALWAYS use XHR for recording events to avoid fetch keepalive 64KB limit
+    // The browser silently drops fetch requests with keepalive:true when body > 64KB
+    // FullSnapshot + Meta events commonly fall in the 64KB-100KB range,
+    // causing them to be silently lost while smaller IncrementalSnapshot batches succeed
     let lastError: any = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Use XMLHttpRequest for large payloads (more reliable than fetch for large data)
-        if (payloadSize > 100000) { // > 100KB
-          await this.sendToBackendXHR('/v1/rum/recordings', {
-            session_id: sessionId,
-            events,
-            timestamp: new Date().toISOString(),
-          });
-        } else {
-          await this.sendToBackend('/v1/rum/recordings', {
-            session_id: sessionId,
-            events,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        await this.sendToBackendXHR('/v1/rum/recordings', {
+          session_id: sessionId,
+          events,
+          timestamp: new Date().toISOString(),
+        });
         return; // Success, exit
       } catch (error) {
         lastError = error;
