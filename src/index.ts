@@ -322,10 +322,20 @@ class DevSkinSDK {
       pageTitle: document.title,
     };
 
-    this.transport.sendEvent(eventData);
+    // Send custom track events immediately via sendBeacon (synchronous, survives page navigation)
+    const url = `${this.config!.apiUrl || 'https://api.devskin.com'}/v1/rum/events`;
+    const payload = {
+      ...eventData,
+      apiKey: this.config!.apiKey,
+      applicationId: this.config!.appId,
+      environment: this.config!.environment,
+      release: this.config!.release,
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    navigator.sendBeacon(url, blob);
 
     if (this.config?.debug) {
-      console.log('[DevSkin] Event tracked:', eventData);
+      console.log('[DevSkin] Event tracked (beacon):', eventData);
     }
   }
 
@@ -656,28 +666,28 @@ function DevSkin(command: string, ...args: any[]) {
 }
 
 // Process queued commands from async loader
-if (typeof window !== 'undefined' && (window as any).DevSkin) {
+if (typeof window !== 'undefined') {
   const stub = (window as any).DevSkin;
-  if (stub.q && Array.isArray(stub.q)) {
-    // Process all queued commands
-    stub.q.forEach((args: any[]) => {
+  const queue = stub?.q;
+
+  // Replace stub FIRST so any new calls go directly to the real SDK
+  Object.assign(DevSkin, sdk);
+  (window as any).DevSkin = DevSkin;
+
+  // Preserve load time
+  if (stub?.l) {
+    (DevSkin as any).l = stub.l;
+  }
+
+  // THEN process queued commands (including any that arrived during SDK load)
+  if (queue && Array.isArray(queue)) {
+    queue.forEach((args: any[]) => {
       if (args.length > 0) {
         DevSkin(args[0], ...args.slice(1));
       }
     });
   }
-
-  // Preserve load time
-  if (stub.l) {
-    (DevSkin as any).l = stub.l;
-  }
-
-  // Replace stub with real function
-  (window as any).DevSkin = DevSkin;
 }
-
-// For UMD/global access, also expose singleton methods directly
-Object.assign(DevSkin, sdk);
 
 // Export for NPM/module usage
 export default sdk;

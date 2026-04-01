@@ -14111,9 +14111,13 @@ class DevSkinSDK {
             pageUrl: window.location.href,
             pageTitle: document.title,
         };
-        this.transport.sendEvent(eventData);
+        // Send custom track events immediately via sendBeacon (synchronous, survives page navigation)
+        const url = `${this.config.apiUrl || 'https://api.devskin.com'}/v1/rum/events`;
+        const payload = Object.assign(Object.assign({}, eventData), { apiKey: this.config.apiKey, applicationId: this.config.appId, environment: this.config.environment, release: this.config.release });
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        navigator.sendBeacon(url, blob);
         if ((_d = this.config) === null || _d === void 0 ? void 0 : _d.debug) {
-            console.log('[DevSkin] Event tracked:', eventData);
+            console.log('[DevSkin] Event tracked (beacon):', eventData);
         }
     }
     /**
@@ -14368,25 +14372,25 @@ function DevSkin(command, ...args) {
     }
 }
 // Process queued commands from async loader
-if (typeof window !== 'undefined' && window.DevSkin) {
+if (typeof window !== 'undefined') {
     const stub = window.DevSkin;
-    if (stub.q && Array.isArray(stub.q)) {
-        // Process all queued commands
-        stub.q.forEach((args) => {
+    const queue = stub === null || stub === void 0 ? void 0 : stub.q;
+    // Replace stub FIRST so any new calls go directly to the real SDK
+    Object.assign(DevSkin, sdk);
+    window.DevSkin = DevSkin;
+    // Preserve load time
+    if (stub === null || stub === void 0 ? void 0 : stub.l) {
+        DevSkin.l = stub.l;
+    }
+    // THEN process queued commands (including any that arrived during SDK load)
+    if (queue && Array.isArray(queue)) {
+        queue.forEach((args) => {
             if (args.length > 0) {
                 DevSkin(args[0], ...args.slice(1));
             }
         });
     }
-    // Preserve load time
-    if (stub.l) {
-        DevSkin.l = stub.l;
-    }
-    // Replace stub with real function
-    window.DevSkin = DevSkin;
 }
-// For UMD/global access, also expose singleton methods directly
-Object.assign(DevSkin, sdk);
 
 exports.default = sdk;
 //# sourceMappingURL=devskin.cjs.js.map
