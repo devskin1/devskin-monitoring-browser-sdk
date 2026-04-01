@@ -1031,11 +1031,13 @@
             }
         }
         getElementSelector(element) {
+            var _a;
             if (element.id) {
                 return `#${element.id}`;
             }
             if (element.className) {
-                const classes = element.className.split(' ').filter(c => c);
+                const classStr = typeof element.className === 'string' ? element.className : ((_a = element.className) === null || _a === void 0 ? void 0 : _a.baseVal) || '';
+                const classes = classStr.split(' ').filter((c) => c);
                 if (classes.length > 0) {
                     return `${element.tagName.toLowerCase()}.${classes.join('.')}`;
                 }
@@ -13627,37 +13629,21 @@
         }
         sendRecordingEvents(sessionId, events) {
             return __awaiter$1(this, void 0, void 0, function* () {
-                // Calculate payload size
-                const payload = {
-                    session_id: sessionId,
-                    events,
-                    timestamp: new Date().toISOString(),
-                    apiKey: this.config.apiKey,
-                    appId: this.config.appId,
-                };
-                const payloadSize = new Blob([JSON.stringify(payload)]).size;
                 // Check if this batch contains FullSnapshot (type 2)
                 const hasFullSnapshot = events.some(e => e.type === 2);
-                const maxRetries = hasFullSnapshot ? 3 : 1; // Retry FullSnapshot batches up to 3 times
-                // Recording events can be large, send immediately with retry logic
+                const maxRetries = hasFullSnapshot ? 3 : 1;
+                // ALWAYS use XHR for recording events to avoid fetch keepalive 64KB limit
+                // The browser silently drops fetch requests with keepalive:true when body > 64KB
+                // FullSnapshot + Meta events commonly fall in the 64KB-100KB range,
+                // causing them to be silently lost while smaller IncrementalSnapshot batches succeed
                 let lastError = null;
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
-                        // Use XMLHttpRequest for large payloads (more reliable than fetch for large data)
-                        if (payloadSize > 100000) { // > 100KB
-                            yield this.sendToBackendXHR('/v1/rum/recordings', {
-                                session_id: sessionId,
-                                events,
-                                timestamp: new Date().toISOString(),
-                            });
-                        }
-                        else {
-                            yield this.sendToBackend('/v1/rum/recordings', {
-                                session_id: sessionId,
-                                events,
-                                timestamp: new Date().toISOString(),
-                            });
-                        }
+                        yield this.sendToBackendXHR('/v1/rum/recordings', {
+                            session_id: sessionId,
+                            events,
+                            timestamp: new Date().toISOString(),
+                        });
                         return; // Success, exit
                     }
                     catch (error) {

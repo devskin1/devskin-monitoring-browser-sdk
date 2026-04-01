@@ -262,7 +262,8 @@ export class HeatmapCollector {
     }
 
     if (element.className) {
-      const classes = element.className.split(' ').filter(c => c);
+      const classStr = typeof element.className === 'string' ? element.className : (element.className as any)?.baseVal || '';
+      const classes = classStr.split(' ').filter((c: string) => c);
       if (classes.length > 0) {
         return `${element.tagName.toLowerCase()}.${classes.join('.')}`;
       }
